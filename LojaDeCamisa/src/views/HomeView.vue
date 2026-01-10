@@ -76,9 +76,9 @@ const selecoes = computed(() =>
       <p class="text-gray-300 text-xl md:text-2xl mb-10 font-medium tracking-wider uppercase">
         Vista a paixão. O jogo começou.
       </p>
-      <button class="bg-atk-neon text-atk-dark font-extrabold text-xl px-12 py-5 rounded-full uppercase tracking-widest hover:bg-white hover:scale-105 transition-all shadow-lg shadow-atk-neon/20">
-        Comprar Agora
-      </button>
+      <RouterLink to="/produtos" class="bg-atk-neon text-atk-dark font-extrabold text-xl px-12 py-5 rounded-full uppercase tracking-widest hover:bg-white hover:scale-105 transition-all shadow-lg shadow-atk-neon/20">
+        Ver Catalago
+      </RouterLink>
     </div>
   </section>
 
