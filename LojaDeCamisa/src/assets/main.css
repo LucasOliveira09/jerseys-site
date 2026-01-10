@@ -1,3 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.categoria {
+  @apply bg-gray-100 rounded-lg p-6 text-center font-semibold hover:bg-blue-100 cursor-pointer transition;
+}
+
+.banner-cat {
+  @apply relative h-40 rounded-lg bg-cover bg-center flex items-end p-4 font-extrabold text-white text-xl cursor-pointer;
+}
+.banner-cat::after {
+  content: '';
+  @apply absolute inset-0 bg-black/40 rounded-lg;
+}
+.banner-cat span {
+  @apply relative z-10;
+}
+
+/* Adicione isso para o fundo escuro global */
+body {
+  @apply bg-atk-dark text-gray-100;
+  font-family: 'Inter', sans-serif; /* Ou a fonte que você preferir */
+}
+
+/* Opcional: Adiciona uma sombra neon suave ao passar o mouse nos cards */
+.hover\:shadow-neon:hover {
+    box-shadow: 0 0 15px -3px rgba(0, 255, 194, 0.3);
+}
