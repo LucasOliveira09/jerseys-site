@@ -1,16 +1,15 @@
 // Arquivo: src/main.js
+import './assets/main.css' // O CSS do Tailwind
+
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import './assets/main.css' // <--- Adicione ou verifique esta linha
-import { createApp } from 'vue'
-
 
 import App from './App.vue'
-import router from './router' // <--- Importa o arquivo que acabamos de criar
+import router from './router'
 
 const app = createApp(App)
 
 app.use(createPinia())
-app.use(router) // <--- Diz ao Vue para usar o roteador
+app.use(router)
 
 app.mount('#app')

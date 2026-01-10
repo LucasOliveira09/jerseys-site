@@ -7,6 +7,9 @@ import { RouterLink, RouterView } from 'vue-router'
     <div class="wrapper">
       <nav>
         <RouterLink to="/">Início</RouterLink>
+        <router-link to="/login" class="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded text-sm font-bold transition">
+  Entrar
+</router-link>
         </nav>
     </div>
   </header>

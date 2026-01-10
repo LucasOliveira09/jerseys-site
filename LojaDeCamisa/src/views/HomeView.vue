@@ -9,7 +9,7 @@ async function buscarCamisas() {
   try {
     carregando.value = true
     const { data, error } = await supabase
-      .from('products')
+      .from('produtos')
       .select('*')
       .eq('active', true) // Filtra apenas ativos
 
