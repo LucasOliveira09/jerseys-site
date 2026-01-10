@@ -45,12 +45,6 @@ defineProps({
         >
           Adicionar ao Carrinho
         </RouterLink>
-        <RouterLink
-          :to="`/produto/${product.id}`"
-          class="block w-full bg-atk-neon text-atk-dark font-extrabold uppercase py-3 rounded-lg hover:bg-white hover:scale-[1.02] transition-all duration-200"
-        >
-          Adicionar ao Carrinho
-        </RouterLink>
       </div>
     </div>
   </div>
