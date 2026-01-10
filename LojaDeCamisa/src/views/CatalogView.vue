@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue' // <--- Adicionei watch
 import { supabase } from '../supabase'
 import ProductCard from '../components/ProductCard.vue'
 import { useRoute } from 'vue-router'
@@ -9,8 +9,9 @@ const produtos = ref([])
 const carregando = ref(true)
 
 // Estados dos Filtros
-const abaAtiva = ref('torcedor') // Começa exibindo 'Torcedor' (padrão)
+const abaAtiva = ref('torcedor')
 const filtroLiga = ref('')
+const filtroTexto = ref('') // <--- NOVO: Para a busca da lupa
 const ordenacao = ref('padrao')
 
 const ligasDisponiveis = [
@@ -21,17 +22,15 @@ async function buscarTodosProdutos() {
   try {
     carregando.value = true
     const { data, error } = await supabase
-      .from('produtos')
+      .from('produtos') // Confirme se sua tabela é 'produtos' ou 'products'
       .select('*')
       .eq('active', true)
 
     if (error) throw error
     produtos.value = data
 
-    if (route.query.liga) {
-      filtroLiga.value = route.query.liga
-      abaAtiva.value = 'torcedor'
-    }
+    // Verifica a URL assim que carrega
+    lerParametrosURL()
   } catch (erro) {
     console.error('Erro ao carregar catálogo:', erro)
   } finally {
@@ -39,9 +38,42 @@ async function buscarTodosProdutos() {
   }
 }
 
+// Função que lê a URL para ativar filtros ou busca
+function lerParametrosURL() {
+  // 1. Se tiver busca por texto (?q=flamengo)
+  if (route.query.q) {
+    filtroTexto.value = route.query.q
+    abaAtiva.value = 'todos' // Reseta abas
+    filtroLiga.value = ''
+  } 
+  // 2. Se tiver filtro de liga (?liga=brasileirao)
+  else if (route.query.liga) {
+    filtroLiga.value = route.query.liga
+    abaAtiva.value = 'torcedor'
+    filtroTexto.value = ''
+  }
+}
+
+// Ouve mudanças na URL (para funcionar se pesquisar duas vezes seguidas)
+watch(() => route.query, () => {
+  lerParametrosURL()
+})
+
 // LÓGICA DE FILTRAGEM
 const produtosFiltrados = computed(() => {
   let lista = [...produtos.value]
+
+  // 0. FILTRO DE BUSCA (Prioridade Máxima)
+  if (filtroTexto.value) {
+    const termo = filtroTexto.value.toLowerCase()
+    // Procura no nome, liga ou categoria
+    lista = lista.filter(p => 
+      p.name.toLowerCase().includes(termo) || 
+      p.league.toLowerCase().includes(termo) ||
+      (p.category && p.category.toLowerCase().includes(termo))
+    )
+    return lista // Se tem busca, ignora as abas abaixo
+  }
 
   // 1. FILTRO DAS ABAS
   if (abaAtiva.value === 'torcedor') {
@@ -52,15 +84,19 @@ const produtosFiltrados = computed(() => {
       p.category !== 'Retro' &&
       p.category !== 'Feminino' && 
       p.category !== 'Feminina' &&
+      p.category !== 'women' && 
+      p.category !== 'Women' &&
       !p.name.toUpperCase().includes('PLAYER')
     )
   } 
   else if (abaAtiva.value === 'feminino') {
-    // Busca 'Feminino' na categoria ou no nome
     lista = lista.filter(p => 
       p.category === 'women' || 
       p.category === 'Women' ||
-      p.name.toUpperCase().includes('Women')
+      p.category === 'Feminino' || 
+      p.category === 'Feminina' ||
+      p.name.toUpperCase().includes('WOMEN') ||
+      p.name.toUpperCase().includes('FEMININ')
     )
   }
   else if (abaAtiva.value === 'player') {
@@ -95,6 +131,7 @@ const produtosFiltrados = computed(() => {
 
 function setAba(novaAba) {
   abaAtiva.value = novaAba
+  filtroTexto.value = '' // Limpa a busca se clicar numa aba
 }
 
 onMounted(() => {
@@ -107,12 +144,23 @@ onMounted(() => {
     
     <div class="bg-[#1a1a1a] border-b border-white/10 pt-10 pb-6 mb-8">
       <div class="max-w-7xl mx-auto px-4 text-center">
-        <h1 class="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">
-          Catálogo <span class="text-atk-neon">Oficial</span>
-        </h1>
-        <p class="text-gray-400 text-sm md:text-base mb-8">Escolha sua versão favorita</p>
+        
+        <div v-if="filtroTexto" class="mb-6">
+          <p class="text-gray-400 uppercase tracking-widest text-sm">Resultados para:</p>
+          <h1 class="text-3xl md:text-4xl font-extrabold text-atk-neon">"{{ filtroTexto }}"</h1>
+          <button @click="filtroTexto = ''; abaAtiva = 'torcedor'" class="mt-2 text-sm text-white hover:text-red-400 underline cursor-pointer">
+            Limpar Busca
+          </button>
+        </div>
 
-        <div class="flex flex-wrap justify-center gap-3">
+        <div v-else>
+          <h1 class="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">
+            Catálogo <span class="text-atk-neon">Oficial</span>
+          </h1>
+          <p class="text-gray-400 text-sm md:text-base mb-8">Escolha sua versão favorita</p>
+        </div>
+
+        <div v-if="!filtroTexto" class="flex flex-wrap justify-center gap-3">
           
           <button 
             @click="setAba('torcedor')"
@@ -192,6 +240,7 @@ onMounted(() => {
             <option value="padrao">Relevância</option>
             <option value="menor-preco">Menor Preço</option>
             <option value="maior-preco">Maior Preço</option>
+            <option value="alfabetica">A - Z</option>
           </select>
         </div>
       </div>
@@ -211,8 +260,10 @@ onMounted(() => {
 
         <div v-else class="text-center py-24 bg-[#151515] rounded-lg border border-dashed border-white/10">
           <p class="text-3xl mb-4">😶</p>
-          <h3 class="text-xl font-bold text-white mb-2">Nenhum produto nessa categoria</h3>
-          <p class="text-gray-400 text-sm">Tente limpar o filtro de liga.</p>
+          <h3 class="text-xl font-bold text-white mb-2">Nenhum produto encontrado</h3>
+          <p class="text-gray-400 text-sm">
+            {{ filtroTexto ? 'Tente verificar a ortografia.' : 'Tente limpar os filtros.' }}
+          </p>
         </div>
       </div>
 
