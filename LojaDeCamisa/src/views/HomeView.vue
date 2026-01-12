@@ -24,52 +24,44 @@ async function buscarProdutos() {
 
 onMounted(buscarProdutos)
 
-/* ===== SEÇÕES ===== */
+/* ===== SEÇÕES MANUAIS ===== */
 
+// 1. DESTAQUES (Topo) - Marcados com ⭐
 const destaques = computed(() =>
   produtos.value
-    .filter(p => p.is_featured === true) // Filtra os marcados
-    .slice(0, 8) // Limita a 8 itens para não quebrar o layout
+    .filter(p => p.is_featured === true)
+    .slice(0, 8)
 )
 
-// 2. LANÇAMENTOS (NOVIDADE): Pega os marcados como 'is_new_arrival' OU os últimos adicionados
-const lancamentos = computed(() =>
+// 2. QUERIDINHAS - Marcados com 💜
+const queridinhas = computed(() =>
   produtos.value
-    .filter(p => p.is_new_arrival === true)
-    .slice(0, 4)
+    .filter(p => p.is_trending === true)
+    .slice(0, 8)
 )
 
-// 3. BRASILEIRÃO: Continua automático (basta a camisa ter a liga correta)
+// 3. BRASILEIRÃO - Marcados com 🇧🇷
 const brasileirao = computed(() =>
   produtos.value
-    .filter(p => p.league === 'Brasileirão')
-    .filter(p => p.is_featured === true)
-    .slice(0, 4) // Mostra 4 ou 8
+    .filter(p => p.is_brasileirao_featured === true)
+    .slice(0, 8)
 )
 
-// 4. SELEÇÕES: Continua automático
+// 4. SELEÇÕES - Marcados com 🌍
 const selecoes = computed(() =>
   produtos.value
-    .filter(p => p.league === 'Seleções')
-    .slice(0, 4)
+    .filter(p => p.is_selecoes_featured === true)
+    .slice(0, 8)
 )
-
-// 5. PROMOÇÕES: Automático (Se o preço de venda for menor que o de custo/tabela)
-// const promocoes = computed(() =>
-//  produtos.value
-// .filter(p => Number(p.price_sale) < Number(p.price_cost + 50)) // Exemplo de lógica
-//   .slice(0, 8)
-//)
 </script>
 
 <template>
-  <!-- HERO -->
   <section class="relative h-[500px] md:h-[600px] flex items-center justify-center overflow-hidden bg-atk-dark">
-    <div class="absolute inset-0  bg-cover bg-center opacity-30 grayscale mix-blend-luminosity"></div>
+    <div class="absolute inset-0 bg-cover bg-center opacity-30 grayscale mix-blend-luminosity" style="background-image: url('https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=2070&auto=format&fit=crop')"></div>
     <div class="absolute inset-0 bg-gradient-to-t from-atk-dark via-atk-dark/60 to-transparent"></div>
 
     <div class="relative z-10 max-w-7xl mx-auto px-6 text-center">
-      <h1 class="text-5xl md:text-8xl font-extrabold mb-6 uppercase italic tracking-tighter leading-none drop-shadow-2xl">
+      <h1 class="text-5xl md:text-8xl font-extrabold mb-6 uppercase italic tracking-tighter leading-none drop-shadow-2xl text-white">
         Mantos da <br>
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-atk-neon to-white">Temporada</span>
       </h1>
@@ -77,21 +69,22 @@ const selecoes = computed(() =>
         Vista a paixão. O jogo começou.
       </p>
       <RouterLink to="/produtos" class="bg-atk-neon text-atk-dark font-extrabold text-xl px-12 py-5 rounded-full uppercase tracking-widest hover:bg-white hover:scale-105 transition-all shadow-lg shadow-atk-neon/20">
-        Ver Catalago
+        Ver Catálogo
       </RouterLink>
     </div>
   </section>
 
-  <!-- LOADING -->
   <div v-if="carregando" class="text-center py-20 text-gray-500">
-    Carregando produtos...
+    <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-atk-neon mx-auto mb-4"></div>
   </div>
 
   <template v-else>
-    <Section id="destaques" title="🔥 Destaques da Temporada" :items="destaques" />
-    <Section title="Queridinhas" :items="premierleague" />
-    <Section title="🇧🇷 Brasileirão" :items="brasileirao" />
-    <Section title="🌍 Seleções" :items="selecoes" />
-    <!-- ><Section title="💸 Promoções" :items="promocoes" /> -->
+    <Section v-if="destaques.length > 0" id="destaques" title="🔥 Destaques da Temporada" :items="destaques" />
+    
+    <Section v-if="queridinhas.length > 0" title="💜 Queridinhas da Galera" :items="queridinhas" />
+    
+    <Section v-if="brasileirao.length > 0" title="🇧🇷 Destaques do Brasileirão" :items="brasileirao" />
+    
+    <Section v-if="selecoes.length > 0" title="🌍 Destaques Seleções" :items="selecoes" />
   </template>
 </template>

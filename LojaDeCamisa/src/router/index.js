@@ -3,9 +3,15 @@ import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'     // <--- Importe
 import RegisterView from '../views/RegisterView.vue' // <--- Importe
 import ProductView from '../views/ProductView.vue'
-import CatalogView from '../views/CatalogView.vue' // <--- Importe (se já tiver criado)
+import CatalogView from '../views/CatalogView.vue'
+import AdminView from '../views/AdminView.vue' // <--- Importe (se já tiver criado)
 
 const routes = [
+  {
+  path: '/admin',
+  name: 'admin',
+  component: AdminView
+ },
   {
     path: '/',
     name: 'home',
