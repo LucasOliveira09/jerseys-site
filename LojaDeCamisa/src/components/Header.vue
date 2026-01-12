@@ -124,7 +124,7 @@ function realizarBusca() {
           </div>
           <button @click="handleLogout" class="text-xs font-bold text-red-500 hover:text-red-400 border border-red-500/30 px-3 py-1.5 rounded uppercase hover:bg-red-500/10 transition">Sair</button>
         </div>
-        <RouterLink v-else to="/login" class="hidden md:block bg-atk-neon text-atk-dark px-5 py-2 rounded font-extrabold text-sm uppercase tracking-wide hover:bg-white transition hover:shadow-[0_0_15px_rgba(0,255,194,0.4)]">Entrar</RouterLink>
+        <RouterLink v-else to="/admin" class="hidden md:block bg-atk-neon text-atk-dark px-5 py-2 rounded font-extrabold text-sm uppercase tracking-wide hover:bg-white transition hover:shadow-[0_0_15px_rgba(0,255,194,0.4)]">Entrar</RouterLink>
 
         <button class="md:hidden text-white text-2xl" @click="open = !open">☰</button>
       </div>
