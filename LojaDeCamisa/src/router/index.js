@@ -1,50 +1,67 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
-import LoginView from '../views/LoginView.vue'     // <--- Importe
-import RegisterView from '../views/RegisterView.vue' // <--- Importe
+import CatalogView from '../views/CatalogView.vue'
 import ProductView from '../views/ProductView.vue'
-import CatalogView from '../views/CatalogView.vue' // <--- Importe (se já tiver criado)
+import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
+import AdminView from '../views/AdminView.vue'
+import ShippingView from '../views/ShippingView.vue'
+import CartView from '../views/CartView.vue'
+import ProfileView from '../views/ProfileView.vue'
 
-const routes = [
-  {
-    path: '/',
-    name: 'home',
-    component: HomeView
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior(to, from, savedPosition) {
+    return { top: 0 } // Faz a página subir ao topo quando muda de rota
   },
-  {
-    path: '/login',
-    name: 'login',
-    component: LoginView
-  },
-  {
-    path: '/cadastro',
-    name: 'cadastro',
-    component: RegisterView
-  },
-  // Rota para detalhe do produto (vamos precisar logo)
-  {
-    path: '/produto/:slug',
-    name: 'produto',
-    component: ProductView
-  },
-  {
-    path: '/produtos',
-    name: 'catalogo',
-    component: CatalogView
-  },
-  {
-    path: '/categoria/:liga', // Ex: /categoria/brasileirao
-    name: 'categoria',
-    component: CatalogView,
-    beforeEnter: (to, from, next) => {
-      // Pequeno truque: transforma o parametro da URL em query string para o filtro funcionar
-      to.query.liga = to.params.liga
-      next()
+  routes: [
+    {
+      path: '/',
+      name: 'home',
+      component: HomeView
+    },
+    {
+      path: '/produtos',
+      name: 'catalogo',
+      component: CatalogView
+    },
+    {
+      path: '/produto/:slug',
+      name: 'produto',
+      component: ProductView
+    },
+    {
+      path: '/login',
+      name: 'login',
+      component: LoginView
+    },
+    {
+      path: '/cadastro',
+      name: 'cadastro',
+      component: RegisterView
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: AdminView
+    },
+    {
+  path: '/perfil',
+  name: 'perfil',
+  component: ProfileView
+},
+    {
+      path: '/politicas',
+      name: 'politicas',
+      component: ShippingView
+    },
+
+    {
+      path: '/carrinho',
+      name: 'carrinho',
+      component: CartView
     }
-  }
-]
-
-export default createRouter({
-  history: createWebHistory(),
-  routes
+  ]
 })
+
+export default router

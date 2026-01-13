@@ -1,46 +1,64 @@
-// Arquivo: src/stores/cart.js
 import { defineStore } from 'pinia'
 
 export const useCartStore = defineStore('cart', {
-  // 1. Estado: Onde guardamos os dados
+  // 1. Estado
   state: () => ({
-    items: JSON.parse(localStorage.getItem('carrinho')) || [] // Tenta pegar do localStorage ou inicia vazio
+    // CORREÇÃO: Mudamos de 'items' para 'itens' (com N)
+    itens: JSON.parse(localStorage.getItem('carrinho')) || [] 
   }),
 
-  // 2. Getters: Cálculos automáticos (Total, Quantidade)
+  // 2. Getters
   getters: {
-    quantidade: (state) => state.items.length,
+    quantidade: (state) => state.itens.length,
     
     total: (state) => {
-      // Soma o preço de todos os itens
-      return state.items.reduce((total, item) => total + Number(item.price_sale), 0)
+      // CORREÇÃO: state.itens
+      return state.itens.reduce((total, item) => total + Number(item.price_sale), 0)
     }
   },
 
-  // 3. Ações: Funções para mexer no carrinho
+  // 3. Ações
   actions: {
     adicionarAoCarrinho(produto, tamanho) {
-      this.items.push({
+      // CORREÇÃO: this.itens
+      this.itens.push({
         ...produto,
         tamanhoEscolhido: tamanho,
-        cartId: Date.now() // Cria um ID único para o item no carrinho
+        quantidade: 1, // Garante que comece com 1
+        cartId: Date.now() 
       })
       this.salvarNoNavegador()
     },
 
-    removerDoCarrinho(cartId) {
-      this.items = this.items.filter(item => item.cartId !== cartId)
-      this.salvarNoNavegador()
-    },
-
     limparCarrinho() {
-      this.items = []
+      this.itens = []
       this.salvarNoNavegador()
     },
 
-    // Função auxiliar para não perder o carrinho ao atualizar a página
+    removerItem(cartId) {
+      this.itens = this.itens.filter(i => i.cartId !== cartId)
+      this.salvarNoNavegador()
+    },
+
+    // Adicionei estas para os botões + e - do carrinho funcionarem
+    aumentarQuantidade(cartId) {
+      const item = this.itens.find(i => i.cartId === cartId)
+      if (item) {
+        item.quantidade++
+        this.salvarNoNavegador()
+      }
+    },
+
+    diminuirQuantidade(cartId) {
+      const item = this.itens.find(i => i.cartId === cartId)
+      if (item && item.quantidade > 1) {
+        item.quantidade--
+        this.salvarNoNavegador()
+      }
+    },
+
     salvarNoNavegador() {
-      localStorage.setItem('carrinho', JSON.stringify(this.items))
+      localStorage.setItem('carrinho', JSON.stringify(this.itens))
     }
   }
 })
