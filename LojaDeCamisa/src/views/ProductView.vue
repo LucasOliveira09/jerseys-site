@@ -13,20 +13,20 @@ const relacionados = ref([])
 const carregando = ref(true)
 const erro = ref('')
 
-// --- ESTADOS ---
+// --- ESTADOS VISUAIS ---
 const imagemAtualIndex = ref(0) 
 const scrollContainer = ref(null) 
+const showGuiaMedidas = ref(false)
 
-// Opções
+// --- OPÇÕES DE COMPRA ---
 const tamanhoSelecionado = ref('')
 const versaoSelecionada = ref('torcedor')
 const querPersonalizar = ref(false)
 const nomePersonalizado = ref('')
 const numeroPersonalizado = ref('')
 const patchSelecionado = ref('')
-const showGuiaMedidas = ref(false)
 
-// Frete
+// --- FRETE ---
 const cep = ref('')
 const calculandoFrete = ref(false)
 const freteCalculado = ref(null)
@@ -34,7 +34,96 @@ const freteCalculado = ref(null)
 const tamanhosPadrao = ['P', 'M', 'G', 'GG', 'XG']
 const patchesDisponiveis = ['Nenhum', 'Champions League', 'Libertadores', 'Brasileirão', 'Premier League', 'Mundial FIFA']
 
-// --- CARREGAMENTO ---
+// ============================================================
+// DADOS DO GUIA DE MEDIDAS (Extraído do PDF)
+// ============================================================
+const tabelasMedidas = {
+  torcedor: {
+    titulo: 'Versão Fan (Torcedor)',
+    headers: ['Tam.', 'Largura (cm)', 'Comp. (cm)', 'Altura Sugerida'],
+    rows: [
+      { t: 'P', l: '53-55', c: '69-71', a: '162-170 cm' },
+      { t: 'M', l: '55-57', c: '71-73', a: '170-176 cm' },
+      { t: 'G', l: '57-58', c: '73-75', a: '176-182 cm' },
+      { t: 'GG', l: '58-60', c: '75-78', a: '182-190 cm' },
+      { t: '2XL', l: '60-62', c: '78-81', a: '190-195 cm' },
+      { t: '3XL', l: '62-64', c: '81-83', a: '192-197 cm' }
+    ]
+  },
+  jogador: {
+    titulo: 'Versão Player (Jogador)',
+    headers: ['Tam.', 'Largura (cm)', 'Comp. (cm)', 'Altura Sugerida'],
+    rows: [
+      { t: 'P', l: '49-51', c: '67-69', a: '162-170 cm' },
+      { t: 'M', l: '51-53', c: '69-71', a: '170-175 cm' },
+      { t: 'G', l: '53-55', c: '71-73', a: '175-180 cm' },
+      { t: 'GG', l: '55-57', c: '73-76', a: '180-185 cm' },
+      { t: '2XL', l: '57-60', c: '76-78', a: '185-190 cm' },
+      { t: '3XL', l: '60-63', c: '78-79', a: '190-195 cm' }
+    ]
+  },
+  feminina: {
+    titulo: 'Modelo Feminino',
+    headers: ['Tam.', 'Largura (cm)', 'Comp. (cm)', 'Altura Sugerida'],
+    rows: [
+      { t: 'P', l: '40-41', c: '61-63', a: '150-160 cm' },
+      { t: 'M', l: '41-44', c: '63-66', a: '160-165 cm' },
+      { t: 'G', l: '44-47', c: '66-69', a: '165-170 cm' },
+      { t: 'GG', l: '47-50', c: '69-71', a: '170-175 cm' }
+    ]
+  },
+  retro: {
+    titulo: 'Camisa Retrô',
+    headers: ['Tam.', 'Largura (cm)', 'Comp. (cm)', 'Altura Sugerida'],
+    rows: [
+      { t: 'P', l: '48', c: '67', a: '160-165 cm' },
+      { t: 'M', l: '50', c: '70', a: '165-170 cm' },
+      { t: 'G', l: '52.5', c: '73.5', a: '170-175 cm' },
+      { t: 'GG', l: '55', c: '77', a: '175-178 cm' },
+      { t: '2XL', l: '57', c: '80', a: '179-184 cm' }
+    ]
+  },
+  infantil: {
+    titulo: 'Kit Infantil',
+    headers: ['Tam.', 'Idade', 'Altura (cm)', 'Largura (cm)', 'Comp. (cm)'],
+    rows: [
+      { t: '16', i: '3-4 anos', a: '95-105', l: '35-37', c: '44-47' },
+      { t: '18', i: '4-5 anos', a: '105-115', l: '37-39', c: '47-50' },
+      { t: '20', i: '5-6 anos', a: '115-125', l: '39-41', c: '50-53' },
+      { t: '22', i: '6-7 anos', a: '125-135', l: '41-43', c: '53-56' },
+      { t: '24', i: '8-9 anos', a: '135-145', l: '43-45', c: '56-59' },
+      { t: '26', i: '10-11 anos', a: '145-155', l: '45-47', c: '59-62' },
+      { t: '28', i: '12-13 anos', a: '155-165', l: '47-49', c: '62-65' }
+    ]
+  }
+}
+
+// Lógica Inteligente para escolher a tabela correta
+const tabelaAtiva = computed(() => {
+  if (!produto.value) return tabelasMedidas.torcedor
+
+  const cat = produto.value.category ? produto.value.category.toLowerCase() : ''
+  const nome = produto.value.name ? produto.value.name.toLowerCase() : ''
+
+  // 1. Infantil
+  if (cat === 'kids' || cat === 'infantil') return tabelasMedidas.infantil
+
+  // 2. Feminina
+  if (cat === 'feminino' || cat === 'feminina' || cat === 'women' || nome.includes('women')) return tabelasMedidas.feminina
+
+  // 3. Retrô
+  if (cat === 'retro' || cat === 'retrô') return tabelasMedidas.retro
+
+  // 4. Jogador (Se selecionado)
+  if (versaoSelecionada.value === 'jogador') return tabelasMedidas.jogador
+
+  // Padrão
+  return tabelasMedidas.torcedor
+})
+
+// ============================================================
+// CARREGAMENTO E LÓGICA DO PRODUTO
+// ============================================================
 async function carregarProduto() {
   try {
     carregando.value = true
@@ -55,7 +144,6 @@ async function carregarProduto() {
       const termoBusca = produto.value.name.split(' ')[0]
       buscarRelacionados(produto.value.league, termoBusca, produto.value.id)
     }
-
   } catch (err) {
     console.error(err)
     erro.value = 'Produto não encontrado.'
@@ -73,6 +161,7 @@ function resetarEstados() {
   patchSelecionado.value = ''
   cep.value = ''
   freteCalculado.value = null
+  showGuiaMedidas.value = false
 }
 
 async function buscarRelacionados(liga, termoNome, idAtual) {
@@ -114,10 +203,7 @@ function selecionarImagem(index) {
   imagemAtualIndex.value = index
   if (scrollContainer.value) {
     const largura = scrollContainer.value.offsetWidth
-    scrollContainer.value.scrollTo({
-      left: largura * index,
-      behavior: 'smooth'
-    })
+    scrollContainer.value.scrollTo({ left: largura * index, behavior: 'smooth' })
   }
 }
 
@@ -150,7 +236,7 @@ const precoFinal = computed(() => {
   return total
 })
 
-// --- FRETE (CEP & DATA) ---
+// --- FRETE ---
 function formatarCep() {
   let v = cep.value.replace(/\D/g, "")
   if (v.length > 5) v = v.replace(/^(\d{5})(\d)/, "$1-$2")
@@ -165,25 +251,17 @@ function calcularFrete() {
   calculandoFrete.value = true
   freteCalculado.value = null
 
-  // 1. Lógica de Datas (Hoje + 25 e Hoje + 30)
+  // Data Atual + 25 e 30 dias
   const hoje = new Date()
+  const dataMin = new Date(hoje); dataMin.setDate(hoje.getDate() + 25)
+  const dataMax = new Date(hoje); dataMax.setDate(hoje.getDate() + 30)
   
-  const dataMin = new Date(hoje)
-  dataMin.setDate(hoje.getDate() + 25)
-
-  const dataMax = new Date(hoje)
-  dataMax.setDate(hoje.getDate() + 30)
-
-  // 2. Formatação (Dia/Mês)
   const opcoes = { day: '2-digit', month: '2-digit' }
-  const dataMinFormatada = dataMin.toLocaleDateString('pt-BR', opcoes)
-  const dataMaxFormatada = dataMax.toLocaleDateString('pt-BR', opcoes)
 
   setTimeout(() => {
     calculandoFrete.value = false
     freteCalculado.value = {
-      // Texto dinâmico: "Chega entre 15/02 e 20/02"
-      prazo: `Chega entre ${dataMinFormatada} e ${dataMaxFormatada}`,
+      prazo: `Chega entre ${dataMin.toLocaleDateString('pt-BR', opcoes)} e ${dataMax.toLocaleDateString('pt-BR', opcoes)}`,
       regra: 'Compre 3 camisas e ganhe Frete Grátis!'
     }
   }, 1000)
@@ -244,6 +322,7 @@ onMounted(() => carregarProduto())
         
         <div class="lg:col-span-7 space-y-4">
           <div class="relative group bg-[#1a1a1a] rounded-xl border border-white/5 aspect-square overflow-hidden">
+             
              <div 
                ref="scrollContainer"
                @scroll="onScroll"
@@ -262,8 +341,8 @@ onMounted(() => carregarProduto())
                {{ produto.league }}
              </div>
 
-             <button v-if="imagemAtualIndex > 0" @click="selecionarImagem(imagemAtualIndex - 1)" class="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full">❮</button>
-             <button v-if="imagemAtualIndex < todasImagens.length - 1" @click="selecionarImagem(imagemAtualIndex + 1)" class="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full">❯</button>
+             <button v-if="imagemAtualIndex > 0" @click="selecionarImagem(imagemAtualIndex - 1)" class="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❮</button>
+             <button v-if="imagemAtualIndex < todasImagens.length - 1" @click="selecionarImagem(imagemAtualIndex + 1)" class="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❯</button>
 
              <div class="absolute bottom-4 left-0 w-full flex justify-center gap-2 z-10">
                <span v-for="(_, idx) in todasImagens" :key="idx" class="block w-2 h-2 rounded-full transition-all" :class="idx === imagemAtualIndex ? 'bg-atk-neon w-4' : 'bg-gray-500'"></span>
@@ -320,7 +399,7 @@ onMounted(() => carregarProduto())
             <div class="flex justify-between items-center mb-3">
               <h3 class="font-bold text-white uppercase tracking-wider text-sm">2. Tamanho</h3>
               <button @click="showGuiaMedidas = true" class="flex items-center gap-2 text-xs font-bold text-atk-neon border border-atk-neon/30 px-3 py-1.5 rounded hover:bg-atk-neon hover:text-atk-dark transition">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg> Guia
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg> Guia de Medidas
               </button>
             </div>
             <div class="flex flex-wrap gap-3">
@@ -362,9 +441,7 @@ onMounted(() => carregarProduto())
             </div>
             
             <div v-if="freteCalculado" class="text-xs bg-atk-neon/10 border border-atk-neon/30 p-3 rounded mt-2 animate-fade-in-down">
-              <p class="text-white font-bold mb-1">
-                 📅 <span class="text-atk-neon text-sm">{{ freteCalculado.prazo }}</span>
-              </p>
+              <p class="text-white font-bold mb-1">📅 <span class="text-atk-neon text-sm">{{ freteCalculado.prazo }}</span></p>
               <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-atk-neon/20 text-center">
                  <div><span class="block text-gray-400 text-[10px]">1 Unid.</span><span class="font-bold">R$ 25,00</span></div>
                  <div><span class="block text-gray-400 text-[10px]">2 Unid.</span><span class="font-bold">R$ 20,00</span></div>
@@ -381,14 +458,14 @@ onMounted(() => carregarProduto())
           <img src="https://images.unsplash.com/photo-1579952363873-27f3bade8f55?q=80&w=2070" class="w-full h-full object-cover grayscale opacity-40" />
           <div class="absolute inset-0 p-8 flex flex-col justify-end bg-gradient-to-t from-black via-black/50 to-transparent">
              <h3 class="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">Tecnologia de <span class="text-atk-neon">Elite</span></h3>
-             <p class="text-gray-300 text-sm leading-relaxed">Tecido respirável de alta performance com tecnologia DRI-FIT, garantindo frescor e leveza. Escudo bordado em alta definição e costuras reforçadas para máxima durabilidade.</p>
+             <p class="text-gray-300 text-sm leading-relaxed">Tecido respirável de alta performance com tecnologia DRI-FIT, garantindo frescor e leveza. Escudo bordado em alta definição e costuras reforçadas.</p>
           </div>
         </div>
         <div class="bg-[#151515] rounded-xl border border-white/5 p-8">
            <h3 class="text-xl font-bold text-white mb-6 uppercase flex items-center gap-2">Cuidados com o Manto</h3>
            <div class="space-y-4">
              <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">💧</div><div><p class="font-bold text-sm text-white">Lavar à mão</p><p class="text-xs text-gray-500">Água fria sempre.</p></div></div>
-             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🚫</div><div><p class="font-bold text-sm text-white">Não usar alvejante</p><p class="text-xs text-gray-500">Químicos danificam o tecido.</p></div></div>
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🚫</div><div><p class="font-bold text-sm text-white">Não usar alvejante</p><p class="text-xs text-gray-500">Químicos danificam.</p></div></div>
              <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🔥</div><div><p class="font-bold text-sm text-white">Não passar ferro na estampa</p><p class="text-xs text-gray-500">Se precisar, use do avesso.</p></div></div>
            </div>
         </div>
@@ -406,20 +483,37 @@ onMounted(() => carregarProduto())
     <div v-if="showGuiaMedidas" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showGuiaMedidas = false">
       <div class="bg-[#1a1a1a] p-6 rounded-xl max-w-2xl w-full border border-atk-neon/30 shadow-2xl relative animate-fade-in-down">
         <button @click="showGuiaMedidas = false" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">&times;</button>
-        <h3 class="text-2xl font-bold text-center text-white mb-6 uppercase">Guia de Medidas</h3>
+        
+        <h3 class="text-2xl font-bold text-center text-white mb-2 uppercase">Guia de Medidas</h3>
+        <p class="text-center text-atk-neon text-sm font-bold mb-6 uppercase tracking-wider">{{ tabelaAtiva.titulo }}</p>
+        
         <div class="overflow-x-auto">
           <table class="w-full text-center text-sm">
             <thead>
-              <tr class="bg-atk-neon text-atk-dark font-bold uppercase"><th class="p-3">Tamanho</th><th class="p-3">Largura</th><th class="p-3">Altura</th><th class="p-3">Sugestão</th></tr>
+              <tr class="bg-atk-neon text-atk-dark font-bold uppercase">
+                <th v-for="header in tabelaAtiva.headers" :key="header" class="p-3">{{ header }}</th>
+              </tr>
             </thead>
             <tbody class="text-gray-300">
-              <tr class="border-b border-white/10"><td>P</td><td>48-50 cm</td><td>69-71 cm</td><td>1,62 - 1,70m</td></tr>
-              <tr class="border-b border-white/10"><td>M</td><td>53-55 cm</td><td>71-73 cm</td><td>1,70 - 1,76m</td></tr>
-              <tr class="border-b border-white/10"><td>G</td><td>56-58 cm</td><td>73-75 cm</td><td>1,76 - 1,82m</td></tr>
-              <tr class="border-b border-white/10"><td>GG</td><td>58-60 cm</td><td>75-78 cm</td><td>1,82 - 1,90m</td></tr>
-              <tr><td>XG</td><td>60-62 cm</td><td>78-81 cm</td><td>1,90 - 1,95m</td></tr>
+              <tr v-for="(row, idx) in tabelaAtiva.rows" :key="idx" class="border-b border-white/10 hover:bg-white/5 transition">
+                <td class="p-3 font-bold text-white">{{ row.t }}</td>
+                <template v-if="tabelaAtiva === tabelasMedidas.infantil">
+                   <td>{{ row.i }}</td>
+                   <td>{{ row.a }}</td>
+                   <td>{{ row.l }}</td>
+                   <td>{{ row.c }}</td>
+                </template>
+                <template v-else>
+                   <td>{{ row.l }}</td>
+                   <td>{{ row.c }}</td>
+                   <td>{{ row.a }}</td>
+                </template>
+              </tr>
             </tbody>
           </table>
+        </div>
+        <div class="mt-4 text-xs text-gray-500 text-center space-y-1">
+          <p>* Medidas aproximadas (variação de 2-3cm).</p>
         </div>
       </div>
     </div>
