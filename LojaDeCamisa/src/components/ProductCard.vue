@@ -40,7 +40,7 @@ defineProps({
         </div>
 
         <RouterLink
-          :to="`/produto/${product.id}`"
+          :to="`/produto/${product.slug}`"
           class="block w-full bg-atk-neon text-atk-dark font-extrabold uppercase py-3 rounded-lg hover:bg-white hover:scale-[1.02] transition-all duration-200"
         >
           Adicionar ao Carrinho

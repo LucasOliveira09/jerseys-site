@@ -8,9 +8,24 @@ const cart = useCartStore()
 const router = useRouter()
 const loading = ref(false)
 
-// Cálculo do Total
-const totalCarrinho = computed(() => {
+// 1. Cálculo do Subtotal (Só produtos)
+const subtotal = computed(() => {
   return cart.itens.reduce((acc, item) => acc + (item.price_sale * item.quantidade), 0)
+})
+
+// 2. Cálculo do Frete Dinâmico
+const valorFrete = computed(() => {
+  const qtd = cart.quantidade
+  
+  if (qtd === 0) return 0
+  if (qtd >= 3) return 0        // 3 ou mais: Grátis
+  if (qtd === 2) return 20.00   // 2 camisas: R$ 20,00
+  return 25.00                  // 1 camisa: R$ 25,00
+})
+
+// 3. Total Final (Produtos + Frete)
+const totalGeral = computed(() => {
+  return subtotal.value + valorFrete.value
 })
 
 // Formatar moeda
@@ -18,7 +33,7 @@ const formatPrice = (value) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-// Função de Checkout (Salvar Pedido)
+// Função de Checkout
 async function finalizarCompra() {
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -31,12 +46,13 @@ async function finalizarCompra() {
   loading.value = true
 
   try {
-    // 1. Cria o Pedido na tabela 'orders'
+    // 1. Cria o Pedido (Agora salvando o totalGeral com frete)
     const { data: orderData, error: orderError } = await supabase
-      .from('orders') // Certifique-se de criar esta tabela no Supabase
+      .from('orders')
       .insert({
         user_id: user.id,
-        total: totalCarrinho.value,
+        total: totalGeral.value, // <--- Importante: Salva o total com frete
+        shipping_cost: valorFrete.value, // Opcional: Se quiser salvar o valor do frete separado no banco
         status: 'Pendente',
         created_at: new Date()
       })
@@ -45,14 +61,14 @@ async function finalizarCompra() {
 
     if (orderError) throw orderError
 
-    // 2. Salva os Itens do Pedido na tabela 'order_items'
+    // 2. Salva os Itens
     const itemsParaSalvar = cart.itens.map(item => ({
       order_id: orderData.id,
       product_id: item.id,
       quantity: item.quantidade,
       price: item.price_sale,
       size: item.tamanhoEscolhido,
-      customization: item.personalizacao // Se houver
+      customization: item.personalizacao
     }))
 
     const { error: itemsError } = await supabase
@@ -61,10 +77,10 @@ async function finalizarCompra() {
 
     if (itemsError) throw itemsError
 
-    // Sucesso!
-    cart.limparCarrinho() // Você precisa ter essa ação na sua store
+    // Sucesso
+    cart.limparCarrinho()
     alert('Pedido realizado com sucesso! 🚀')
-    router.push('/perfil') // Redireciona para área do cliente
+    router.push('/perfil')
 
   } catch (error) {
     console.error(error)
@@ -139,12 +155,19 @@ async function finalizarCompra() {
             <div class="space-y-3 border-b border-white/10 pb-6 mb-6 text-sm">
               <div class="flex justify-between text-gray-400">
                 <span>Subtotal</span>
-                <span>{{ formatPrice(totalCarrinho) }}</span>
+                <span>{{ formatPrice(subtotal) }}</span>
               </div>
+              
               <div class="flex justify-between text-gray-400">
                 <span>Frete</span>
-                <span class="text-green-400 font-bold">Grátis</span>
+                <span v-if="valorFrete === 0" class="text-green-400 font-bold">Grátis</span>
+                <span v-else class="text-white">{{ formatPrice(valorFrete) }}</span>
               </div>
+
+              <div v-if="valorFrete > 0" class="text-[10px] text-center bg-atk-neon/10 text-atk-neon py-1 rounded">
+                Adicione mais {{ 3 - cart.quantidade }} camisa(s) para Frete Grátis!
+              </div>
+
               <div class="flex justify-between text-gray-400">
                 <span>Descontos</span>
                 <span>R$ 0,00</span>
@@ -154,7 +177,7 @@ async function finalizarCompra() {
             <div class="flex justify-between items-end mb-6">
               <span class="font-bold text-lg">Total</span>
               <div class="text-right">
-                <span class="block text-2xl font-extrabold text-atk-neon">{{ formatPrice(totalCarrinho) }}</span>
+                <span class="block text-2xl font-extrabold text-atk-neon">{{ formatPrice(totalGeral) }}</span>
                 <span class="text-xs text-gray-500">em até 12x no cartão</span>
               </div>
             </div>
