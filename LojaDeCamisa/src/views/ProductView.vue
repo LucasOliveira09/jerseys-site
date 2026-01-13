@@ -1,15 +1,18 @@
 <script setup>
-import { ref, onMounted, watch, computed, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabase'
 import { useCartStore } from '../stores/cart'
 import ProductCard from '../components/ProductCard.vue'
 
 const route = useRoute()
+const router = useRouter()
 const cart = useCartStore()
 
 const produto = ref(null)
 const relacionados = ref([])
+const reviews = ref([]) 
+const user = ref(null) 
 const carregando = ref(true)
 const erro = ref('')
 
@@ -26,6 +29,10 @@ const nomePersonalizado = ref('')
 const numeroPersonalizado = ref('')
 const patchSelecionado = ref('')
 
+// --- AVALIAÇÃO (REVIEW) ---
+const novaAvaliacao = ref({ rating: 5, comment: '' })
+const enviandoReview = ref(false)
+
 // --- FRETE ---
 const cep = ref('')
 const calculandoFrete = ref(false)
@@ -34,9 +41,7 @@ const freteCalculado = ref(null)
 const tamanhosPadrao = ['P', 'M', 'G', 'GG', 'XG']
 const patchesDisponiveis = ['Nenhum', 'Champions League', 'Libertadores', 'Brasileirão', 'Premier League', 'Mundial FIFA']
 
-// ============================================================
-// DADOS DO GUIA DE MEDIDAS (Extraído do PDF)
-// ============================================================
+// TABELAS DE MEDIDAS
 const tabelasMedidas = {
   torcedor: {
     titulo: 'Versão Fan (Torcedor)',
@@ -98,38 +103,37 @@ const tabelasMedidas = {
   }
 }
 
-// Lógica Inteligente para escolher a tabela correta
 const tabelaAtiva = computed(() => {
   if (!produto.value) return tabelasMedidas.torcedor
-
   const cat = produto.value.category ? produto.value.category.toLowerCase() : ''
   const nome = produto.value.name ? produto.value.name.toLowerCase() : ''
 
-  // 1. Infantil
   if (cat === 'kids' || cat === 'infantil') return tabelasMedidas.infantil
-
-  // 2. Feminina
   if (cat === 'feminino' || cat === 'feminina' || cat === 'women' || nome.includes('women')) return tabelasMedidas.feminina
-
-  // 3. Retrô
   if (cat === 'retro' || cat === 'retrô') return tabelasMedidas.retro
-
-  // 4. Jogador (Se selecionado)
   if (versaoSelecionada.value === 'jogador') return tabelasMedidas.jogador
-
-  // Padrão
   return tabelasMedidas.torcedor
 })
 
-// ============================================================
-// CARREGAMENTO E LÓGICA DO PRODUTO
-// ============================================================
+// --- CÁLCULO DE ESTRELAS ---
+const mediaEstrelas = computed(() => {
+  if (!reviews.value || reviews.value.length === 0) return 5.0
+  const total = reviews.value.reduce((acc, r) => acc + (r.rating || 0), 0)
+  return (total / reviews.value.length).toFixed(1)
+})
+
+// --- CARREGAMENTO ---
 async function carregarProduto() {
   try {
     carregando.value = true
     erro.value = ''
     resetarEstados()
 
+    // 1. Usuário
+    const { data: userData } = await supabase.auth.getUser()
+    user.value = userData.user
+
+    // 2. Produto
     const { data, error } = await supabase
       .from('produtos') 
       .select('*')
@@ -140,6 +144,24 @@ async function carregarProduto() {
     produto.value = data
     imagemAtualIndex.value = 0
 
+    // 3. Reviews (Puxando com o nome do perfil)
+    console.log('Buscando reviews...')
+    const { data: reviewsData, error: reviewsError } = await supabase
+      .from('reviews')
+      .select(`
+        id, rating, comment, created_at,
+        profiles ( full_name )
+      `) 
+      .eq('product_id', data.id)
+      .order('created_at', { ascending: false })
+    
+    if (reviewsError) {
+      console.error('Erro reviews:', reviewsError)
+    } else {
+      reviews.value = reviewsData || []
+    }
+
+    // 4. Relacionados
     if (produto.value) {
       const termoBusca = produto.value.name.split(' ')[0]
       buscarRelacionados(produto.value.league, termoBusca, produto.value.id)
@@ -162,6 +184,7 @@ function resetarEstados() {
   cep.value = ''
   freteCalculado.value = null
   showGuiaMedidas.value = false
+  novaAvaliacao.value = { rating: 5, comment: '' }
 }
 
 async function buscarRelacionados(liga, termoNome, idAtual) {
@@ -176,29 +199,62 @@ async function buscarRelacionados(liga, termoNome, idAtual) {
   relacionados.value = data || []
 }
 
-// --- IMAGENS (CARROSSEL) ---
+// --- ENVIAR AVALIAÇÃO ---
+async function enviarAvaliacao() {
+  if (!user.value) {
+    router.push('/login')
+    return
+  }
+  
+  if (!novaAvaliacao.value.comment.trim()) {
+    alert('Por favor, escreva um comentário.')
+    return
+  }
+
+  enviandoReview.value = true
+  
+  try {
+    const { error } = await supabase.from('reviews').insert({
+      product_id: produto.value.id,
+      user_id: user.value.id,
+      rating: novaAvaliacao.value.rating,
+      comment: novaAvaliacao.value.comment
+    })
+
+    if (error) throw error
+
+    // Atualiza a lista na tela sem precisar recarregar tudo
+    // (Opcional: recarregar do banco é mais seguro para pegar o nome do perfil corretamente)
+    await carregarProduto() 
+    
+    alert('Avaliação enviada com sucesso!')
+    novaAvaliacao.value.comment = ''
+    novaAvaliacao.value.rating = 5
+
+  } catch (err) {
+    console.error(err)
+    alert('Erro ao enviar: ' + err.message)
+  } finally {
+    enviandoReview.value = false
+  }
+}
+
+// ... (todasImagens, selecionarImagem, onScroll, listaTamanhos, precoFinal, formatarCep, calcularFrete, adicionarAoCarrinho)
+// MANTENHA AS FUNÇÕES ABAIXO IGUAIS AO SEU CÓDIGO ANTERIOR
 const todasImagens = computed(() => {
   if (!produto.value) return []
   const capa = produto.value.image_cover
   let lista = [capa]
-
   if (produto.value.images_gallery) {
     let extras = []
     try {
-      if (typeof produto.value.images_gallery === 'string') {
-        extras = JSON.parse(produto.value.images_gallery)
-      } else if (Array.isArray(produto.value.images_gallery)) {
-        extras = produto.value.images_gallery
-      }
+      if (typeof produto.value.images_gallery === 'string') extras = JSON.parse(produto.value.images_gallery)
+      else if (Array.isArray(produto.value.images_gallery)) extras = produto.value.images_gallery
     } catch (e) {}
-
-    extras.forEach(img => {
-      if (img !== capa) lista.push(img)
-    })
+    extras.forEach(img => { if (img !== capa) lista.push(img) })
   }
   return lista
 })
-
 function selecionarImagem(index) {
   imagemAtualIndex.value = index
   if (scrollContainer.value) {
@@ -206,7 +262,6 @@ function selecionarImagem(index) {
     scrollContainer.value.scrollTo({ left: largura * index, behavior: 'smooth' })
   }
 }
-
 function onScroll() {
   if (scrollContainer.value) {
     const scrollLeft = scrollContainer.value.scrollLeft
@@ -214,8 +269,6 @@ function onScroll() {
     imagemAtualIndex.value = Math.round(scrollLeft / largura)
   }
 }
-
-// --- TAMANHOS ---
 const listaTamanhos = computed(() => {
   if (!produto.value || !produto.value.sizes) return tamanhosPadrao
   try {
@@ -223,41 +276,27 @@ const listaTamanhos = computed(() => {
     return Array.isArray(parsed) ? parsed : tamanhosPadrao
   } catch (e) { return tamanhosPadrao }
 })
-
-// --- PREÇO ---
 const precoFinal = computed(() => {
   let total = 0
   if (versaoSelecionada.value === 'jogador') total += 179.90
   else total += 139.90
-
   if (querPersonalizar.value) total += 17.00
   if (patchSelecionado.value && patchSelecionado.value !== 'Nenhum') total += 6.00
-
   return total
 })
-
-// --- FRETE ---
 function formatarCep() {
   let v = cep.value.replace(/\D/g, "")
   if (v.length > 5) v = v.replace(/^(\d{5})(\d)/, "$1-$2")
   cep.value = v
 }
-
 function calcularFrete() {
-  if (cep.value.length < 9) {
-    alert("Digite um CEP válido")
-    return
-  }
+  if (cep.value.length < 9) { alert("Digite um CEP válido"); return }
   calculandoFrete.value = true
   freteCalculado.value = null
-
-  // Data Atual + 25 e 30 dias
   const hoje = new Date()
   const dataMin = new Date(hoje); dataMin.setDate(hoje.getDate() + 25)
   const dataMax = new Date(hoje); dataMax.setDate(hoje.getDate() + 30)
-  
   const opcoes = { day: '2-digit', month: '2-digit' }
-
   setTimeout(() => {
     calculandoFrete.value = false
     freteCalculado.value = {
@@ -266,50 +305,32 @@ function calcularFrete() {
     }
   }, 1000)
 }
-
-// --- CARRINHO ---
 function adicionarAoCarrinho() {
-  if (!tamanhoSelecionado.value) {
-    alert('Por favor, selecione um tamanho antes de comprar.')
-    return
-  }
-  
-  if (querPersonalizar.value && (!nomePersonalizado.value || !numeroPersonalizado.value)) {
-    alert('Por favor, preencha o Nome e Número da personalização.')
-    return
-  }
-
+  if (!tamanhoSelecionado.value) return alert('Por favor, selecione um tamanho.')
+  if (querPersonalizar.value && (!nomePersonalizado.value || !numeroPersonalizado.value)) return alert('Por favor, preencha a personalização.')
   const itemParaCarrinho = {
     ...produto.value,
     price_sale: precoFinal.value,
     versao: versaoSelecionada.value,
     patch: patchSelecionado.value !== 'Nenhum' ? patchSelecionado.value : null,
-    personalizacao: querPersonalizar.value ? {
-      nome: nomePersonalizado.value.toUpperCase(),
-      numero: numeroPersonalizado.value
-    } : null
+    personalizacao: querPersonalizar.value ? { nome: nomePersonalizado.value.toUpperCase(), numero: numeroPersonalizado.value } : null
   }
-
   cart.adicionarAoCarrinho(itemParaCarrinho, tamanhoSelecionado.value)
   alert(`Produto adicionado! Total: R$ ${precoFinal.value.toFixed(2)}`)
 }
-
 watch(() => route.params.slug, () => carregarProduto())
 onMounted(() => carregarProduto())
 </script>
 
 <template>
   <div class="min-h-screen bg-atk-dark text-white font-sans pb-20">
-    
     <div v-if="carregando" class="flex justify-center items-center h-[80vh]">
       <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-atk-neon"></div>
     </div>
-
     <div v-else-if="erro || !produto" class="text-center py-20">
       <h2 class="text-2xl font-bold mb-4">😕 Produto Indisponível</h2>
       <router-link to="/produtos" class="text-atk-neon hover:underline">Voltar ao catálogo</router-link>
     </div>
-
     <div v-else>
       
       <div class="max-w-7xl mx-auto px-4 py-6 text-xs md:text-sm text-gray-500 uppercase tracking-widest flex flex-wrap gap-2">
@@ -319,65 +340,41 @@ onMounted(() => carregarProduto())
       </div>
 
       <div class="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-10 mb-12">
-        
         <div class="lg:col-span-7 space-y-4">
           <div class="relative group bg-[#1a1a1a] rounded-xl border border-white/5 aspect-square overflow-hidden">
-             
-             <div 
-               ref="scrollContainer"
-               @scroll="onScroll"
-               class="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar"
-             >
-               <div 
-                 v-for="(img, index) in todasImagens" 
-                 :key="index"
-                 class="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-6"
-               >
+             <div ref="scrollContainer" @scroll="onScroll" class="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar">
+               <div v-for="(img, index) in todasImagens" :key="index" class="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-6">
                  <img :src="img" :alt="produto.name" class="max-w-full max-h-full object-contain drop-shadow-2xl" />
                </div>
              </div>
-
-             <div class="absolute top-4 left-4 bg-atk-neon text-atk-dark text-xs font-bold px-3 py-1 rounded uppercase shadow-lg z-10">
-               {{ produto.league }}
-             </div>
-
              <button v-if="imagemAtualIndex > 0" @click="selecionarImagem(imagemAtualIndex - 1)" class="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❮</button>
              <button v-if="imagemAtualIndex < todasImagens.length - 1" @click="selecionarImagem(imagemAtualIndex + 1)" class="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❯</button>
-
              <div class="absolute bottom-4 left-0 w-full flex justify-center gap-2 z-10">
                <span v-for="(_, idx) in todasImagens" :key="idx" class="block w-2 h-2 rounded-full transition-all" :class="idx === imagemAtualIndex ? 'bg-atk-neon w-4' : 'bg-gray-500'"></span>
              </div>
           </div>
-
           <div v-if="todasImagens.length > 1" class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-            <button 
-              v-for="(img, index) in todasImagens" :key="index"
-              @click="selecionarImagem(index)"
-              class="w-20 h-20 flex-shrink-0 rounded-lg border-2 overflow-hidden p-1 bg-[#1a1a1a] transition-all"
-              :class="imagemAtualIndex === index ? 'border-atk-neon opacity-100' : 'border-transparent opacity-60 hover:opacity-100'"
-            >
+            <button v-for="(img, index) in todasImagens" :key="index" @click="selecionarImagem(index)" class="w-20 h-20 flex-shrink-0 rounded-lg border-2 overflow-hidden p-1 bg-[#1a1a1a] transition-all" :class="imagemAtualIndex === index ? 'border-atk-neon opacity-100' : 'border-transparent opacity-60 hover:opacity-100'">
               <img :src="img" class="w-full h-full object-contain" />
             </button>
           </div>
         </div>
 
         <div class="lg:col-span-5 flex flex-col gap-6">
-          
           <div>
             <h1 class="text-3xl md:text-4xl font-extrabold uppercase leading-none mb-2">{{ produto.name }}</h1>
             <div class="flex items-center gap-4 text-sm">
               <span class="text-gray-400">{{ produto.category }}</span>
-              <div class="flex text-yellow-400">★★★★★ <span class="text-gray-600 ml-2">(14 avaliações)</span></div>
+              
+              <div class="flex items-center text-yellow-400 font-bold">
+                <span class="text-lg mr-1">★</span> {{ mediaEstrelas }} 
+                <span class="text-gray-500 font-normal ml-2">({{ reviews.length }} avaliações)</span>
+              </div>
             </div>
           </div>
 
           <div class="bg-[#1a1a1a] p-5 rounded-xl border border-white/10">
-            <p class="text-gray-500 text-sm mb-1">Preço Total:</p>
-            <div class="flex items-baseline gap-2">
-              <span class="text-atk-neon text-5xl font-extrabold tracking-tighter">
-                R$ {{ precoFinal.toFixed(2) }}
-              </span>
-            </div>
+            <div class="flex items-baseline gap-2"><span class="text-atk-neon text-5xl font-extrabold tracking-tighter">R$ {{ precoFinal.toFixed(2) }}</span></div>
             <p class="text-green-500 text-xs font-bold mt-2">em até 3x sem juros ou 5% OFF no PIX</p>
           </div>
 
@@ -385,68 +382,94 @@ onMounted(() => carregarProduto())
             <h3 class="font-bold text-white uppercase tracking-wider text-sm mb-3">1. Escolha a Versão</h3>
             <div class="grid grid-cols-2 gap-3">
               <div @click="versaoSelecionada = 'torcedor'" class="border rounded-lg p-3 cursor-pointer transition-all relative" :class="versaoSelecionada === 'torcedor' ? 'border-atk-neon bg-atk-neon/5' : 'border-white/10 bg-[#151515]'">
-                <p class="font-bold uppercase text-sm">Torcedor</p>
-                <span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 139,90</span>
+                <p class="font-bold uppercase text-sm">Torcedor</p><span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 139,90</span>
               </div>
               <div @click="versaoSelecionada = 'jogador'" class="border rounded-lg p-3 cursor-pointer transition-all relative" :class="versaoSelecionada === 'jogador' ? 'border-atk-neon bg-atk-neon/5' : 'border-white/10 bg-[#151515]'">
-                <p class="font-bold uppercase text-sm text-atk-neon">Jogador</p>
-                <span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 179,90</span>
+                <p class="font-bold uppercase text-sm text-atk-neon">Jogador</p><span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 179,90</span>
               </div>
             </div>
           </div>
-
           <div>
             <div class="flex justify-between items-center mb-3">
               <h3 class="font-bold text-white uppercase tracking-wider text-sm">2. Tamanho</h3>
-              <button @click="showGuiaMedidas = true" class="flex items-center gap-2 text-xs font-bold text-atk-neon border border-atk-neon/30 px-3 py-1.5 rounded hover:bg-atk-neon hover:text-atk-dark transition">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg> Guia de Medidas
-              </button>
+              <button @click="showGuiaMedidas = true" class="flex items-center gap-2 text-xs font-bold text-atk-neon border border-atk-neon/30 px-3 py-1.5 rounded hover:bg-atk-neon hover:text-atk-dark transition">Guia</button>
             </div>
             <div class="flex flex-wrap gap-3">
               <button v-for="tamanho in listaTamanhos" :key="tamanho" @click="tamanhoSelecionado = tamanho" class="w-12 h-12 rounded border-2 flex items-center justify-center font-bold transition-all" :class="tamanhoSelecionado === tamanho ? 'border-atk-neon bg-atk-neon text-atk-dark shadow-neon' : 'border-gray-700 text-gray-400 hover:border-white hover:text-white'">{{ tamanho }}</button>
             </div>
           </div>
-
           <div class="bg-[#151515] p-4 rounded-lg border border-dashed border-white/20">
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-2">
-                <input type="checkbox" id="personalizar" v-model="querPersonalizar" class="w-4 h-4 accent-atk-neon cursor-pointer">
-                <label for="personalizar" class="font-bold uppercase text-sm cursor-pointer select-none">Personalizar (+ R$ 17,00)</label>
-              </div>
+            <div class="flex items-center gap-2 mb-2">
+               <input type="checkbox" id="personalizar" v-model="querPersonalizar" class="w-4 h-4 accent-atk-neon"><label for="personalizar" class="font-bold uppercase text-sm">Personalizar (+ R$ 17,00)</label>
             </div>
             <div v-if="querPersonalizar" class="grid grid-cols-3 gap-3 mt-4 animate-fade-in-down">
-              <div class="col-span-2"><input v-model="nomePersonalizado" type="text" placeholder="NOME" maxlength="12" class="w-full bg-black border border-white/20 rounded p-2 text-white uppercase focus:border-atk-neon outline-none" /></div>
-              <div class="col-span-1"><input v-model="numeroPersonalizado" type="number" placeholder="10" max="99" class="w-full bg-black border border-white/20 rounded p-2 text-white text-center focus:border-atk-neon outline-none" /></div>
+               <div class="col-span-2"><input v-model="nomePersonalizado" type="text" placeholder="NOME" class="w-full bg-black border border-white/20 rounded p-2 text-white uppercase outline-none focus:border-atk-neon" /></div>
+               <div class="col-span-1"><input v-model="numeroPersonalizado" type="number" placeholder="10" class="w-full bg-black border border-white/20 rounded p-2 text-white text-center outline-none focus:border-atk-neon" /></div>
             </div>
           </div>
-
           <div>
             <h3 class="font-bold text-white uppercase tracking-wider text-sm mb-2">4. Patch (+ R$ 6,00)</h3>
-            <select v-model="patchSelecionado" class="w-full bg-[#151515] border border-white/20 text-white p-3 rounded-lg outline-none focus:border-atk-neon cursor-pointer">
-              <option value="" disabled selected>Selecione um patch (Opcional)</option>
-              <option v-for="patch in patchesDisponiveis" :key="patch" :value="patch">{{ patch }}</option>
-            </select>
+            <select v-model="patchSelecionado" class="w-full bg-[#151515] border border-white/20 text-white p-3 rounded-lg outline-none focus:border-atk-neon"><option value="" disabled selected>Selecione (Opcional)</option><option v-for="patch in patchesDisponiveis" :key="patch" :value="patch">{{ patch }}</option></select>
           </div>
-
-          <button @click="adicionarAoCarrinho" :disabled="!tamanhoSelecionado" class="w-full bg-atk-neon text-atk-dark py-5 rounded-xl font-extrabold uppercase tracking-widest text-lg hover:bg-white hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(0,255,194,0.3)] disabled:opacity-50 disabled:cursor-not-allowed">Adicionar ao Carrinho</button>
-
+          <button @click="adicionarAoCarrinho" :disabled="!tamanhoSelecionado" class="w-full bg-atk-neon text-atk-dark py-5 rounded-xl font-extrabold uppercase tracking-widest text-lg hover:bg-white hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(0,255,194,0.3)] disabled:opacity-50">Adicionar ao Carrinho</button>
+          
           <div class="bg-[#101010] border border-white/10 rounded-lg p-4">
-            <h3 class="font-bold text-white text-xs uppercase mb-2 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>
-              Calcular Frete e Prazo
-            </h3>
-            <div class="flex gap-2 mb-2">
-              <input v-model="cep" @input="formatarCep" maxlength="9" type="text" placeholder="00000-000" class="bg-black border border-white/20 text-white px-3 py-2 rounded flex-grow outline-none focus:border-atk-neon text-sm">
-              <button @click="calcularFrete" class="bg-gray-700 hover:bg-white hover:text-black text-white px-4 py-2 rounded text-xs font-bold uppercase transition">{{ calculandoFrete ? '...' : 'Calcular' }}</button>
+             <div class="flex gap-2 mb-2">
+               <input v-model="cep" @input="formatarCep" maxlength="9" type="text" placeholder="00000-000" class="bg-black border border-white/20 text-white px-3 py-2 rounded flex-grow outline-none focus:border-atk-neon text-sm">
+               <button @click="calcularFrete" class="bg-gray-700 hover:bg-white hover:text-black text-white px-4 py-2 rounded text-xs font-bold uppercase transition">{{ calculandoFrete ? '...' : 'Calcular' }}</button>
+             </div>
+             <div v-if="freteCalculado" class="text-xs bg-atk-neon/10 border border-atk-neon/30 p-3 rounded mt-2 animate-fade-in-down"><p class="text-white font-bold">📅 <span class="text-atk-neon text-sm">{{ freteCalculado.prazo }}</span></p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="max-w-7xl mx-auto px-4 mb-20">
+        <h2 class="text-2xl font-bold uppercase mb-8 border-b border-white/10 pb-4 flex items-center gap-2">
+          Avaliações dos Torcedores <span class="text-sm bg-white/10 px-2 py-1 rounded text-atk-neon font-mono">{{ reviews.length }}</span>
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          
+          <div class="bg-[#151515] p-6 rounded-xl border border-white/10 h-fit">
+            <h3 class="font-bold text-white mb-4">Deixe sua opinião</h3>
+            
+            <div v-if="user">
+              <div class="flex gap-1 mb-4">
+                <button v-for="star in 5" :key="star" @click="novaAvaliacao.rating = star" class="text-2xl transition hover:scale-110" :class="star <= novaAvaliacao.rating ? 'text-yellow-400' : 'text-gray-600'">★</button>
+              </div>
+              <textarea v-model="novaAvaliacao.comment" rows="4" placeholder="O que achou do manto?" class="w-full bg-black border border-white/20 rounded p-3 text-white text-sm mb-4 outline-none focus:border-atk-neon"></textarea>
+              <button @click="enviarAvaliacao" :disabled="enviandoReview" class="w-full bg-white text-black font-bold py-2 rounded hover:bg-atk-neon hover:text-black transition uppercase text-xs">
+                {{ enviandoReview ? 'Enviando...' : 'Publicar Avaliação' }}
+              </button>
             </div>
             
-            <div v-if="freteCalculado" class="text-xs bg-atk-neon/10 border border-atk-neon/30 p-3 rounded mt-2 animate-fade-in-down">
-              <p class="text-white font-bold mb-1">📅 <span class="text-atk-neon text-sm">{{ freteCalculado.prazo }}</span></p>
-              <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-atk-neon/20 text-center">
-                 <div><span class="block text-gray-400 text-[10px]">1 Unid.</span><span class="font-bold">R$ 25,00</span></div>
-                 <div><span class="block text-gray-400 text-[10px]">2 Unid.</span><span class="font-bold">R$ 20,00</span></div>
-                 <div><span class="block text-gray-400 text-[10px]">3+ Unid.</span><span class="font-extrabold text-green-400">GRÁTIS</span></div>
+            <div v-else class="text-center py-6">
+              <p class="text-gray-400 text-sm mb-4">Faça login para avaliar este produto.</p>
+              <router-link to="/login" class="text-atk-neon font-bold border border-atk-neon px-4 py-2 rounded uppercase text-xs hover:bg-atk-neon hover:text-black transition">Entrar</router-link>
+            </div>
+          </div>
+
+          <div class="md:col-span-2 space-y-4">
+            <div v-if="reviews.length === 0" class="text-gray-500 italic">Seja o primeiro a avaliar este manto!</div>
+            
+            <div v-for="review in reviews" :key="review.id" class="bg-[#1a1a1a] p-4 rounded-lg border border-white/5 animate-fade-in">
+              <div class="flex justify-between items-start mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-xs text-atk-neon">
+                    {{ review.profiles?.full_name ? review.profiles.full_name[0].toUpperCase() : '?' }}
+                  </div>
+                  <div>
+                    <p class="text-sm font-bold text-white">
+                      {{ review.profiles?.full_name || 'Torcedor Anônimo' }}
+                    </p>
+                    <div class="flex text-yellow-400 text-xs">
+                      <span v-for="n in review.rating" :key="n">★</span>
+                    </div>
+                  </div>
+                </div>
+                <span class="text-[10px] text-gray-600">{{ new Date(review.created_at).toLocaleDateString() }}</span>
               </div>
+              <p class="text-gray-300 text-sm leading-relaxed">"{{ review.comment }}"</p>
             </div>
           </div>
 
@@ -466,7 +489,7 @@ onMounted(() => carregarProduto())
            <div class="space-y-4">
              <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">💧</div><div><p class="font-bold text-sm text-white">Lavar à mão</p><p class="text-xs text-gray-500">Água fria sempre.</p></div></div>
              <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🚫</div><div><p class="font-bold text-sm text-white">Não usar alvejante</p><p class="text-xs text-gray-500">Químicos danificam.</p></div></div>
-             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🔥</div><div><p class="font-bold text-sm text-white">Não passar ferro na camisa.</p><p class="text-xs text-gray-500"></p></div></div>
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🔥</div><div><p class="font-bold text-sm text-white">Não passar ferro na estampa</p><p class="text-xs text-gray-500">Se precisar, use do avesso.</p></div></div>
            </div>
         </div>
       </div>
@@ -483,37 +506,21 @@ onMounted(() => carregarProduto())
     <div v-if="showGuiaMedidas" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showGuiaMedidas = false">
       <div class="bg-[#1a1a1a] p-6 rounded-xl max-w-2xl w-full border border-atk-neon/30 shadow-2xl relative animate-fade-in-down">
         <button @click="showGuiaMedidas = false" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">&times;</button>
-        
         <h3 class="text-2xl font-bold text-center text-white mb-2 uppercase">Guia de Medidas</h3>
         <p class="text-center text-atk-neon text-sm font-bold mb-6 uppercase tracking-wider">{{ tabelaAtiva.titulo }}</p>
-        
         <div class="overflow-x-auto">
           <table class="w-full text-center text-sm">
             <thead>
-              <tr class="bg-atk-neon text-atk-dark font-bold uppercase">
-                <th v-for="header in tabelaAtiva.headers" :key="header" class="p-3">{{ header }}</th>
-              </tr>
+              <tr class="bg-atk-neon text-atk-dark font-bold uppercase"><th v-for="header in tabelaAtiva.headers" :key="header" class="p-3">{{ header }}</th></tr>
             </thead>
             <tbody class="text-gray-300">
               <tr v-for="(row, idx) in tabelaAtiva.rows" :key="idx" class="border-b border-white/10 hover:bg-white/5 transition">
                 <td class="p-3 font-bold text-white">{{ row.t }}</td>
-                <template v-if="tabelaAtiva === tabelasMedidas.infantil">
-                   <td>{{ row.i }}</td>
-                   <td>{{ row.a }}</td>
-                   <td>{{ row.l }}</td>
-                   <td>{{ row.c }}</td>
-                </template>
-                <template v-else>
-                   <td>{{ row.l }}</td>
-                   <td>{{ row.c }}</td>
-                   <td>{{ row.a }}</td>
-                </template>
+                <template v-if="tabelaAtiva === tabelasMedidas.infantil"><td>{{ row.i }}</td><td>{{ row.a }}</td><td>{{ row.l }}</td><td>{{ row.c }}</td></template>
+                <template v-else><td>{{ row.l }}</td><td>{{ row.c }}</td><td>{{ row.a }}</td></template>
               </tr>
             </tbody>
           </table>
-        </div>
-        <div class="mt-4 text-xs text-gray-500 text-center space-y-1">
-          <p>* Medidas aproximadas (variação de 2-3cm).</p>
         </div>
       </div>
     </div>
