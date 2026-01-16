@@ -8,6 +8,9 @@ import AdminView from '../views/AdminView.vue'
 import ShippingView from '../views/ShippingView.vue'
 import CartView from '../views/CartView.vue'
 import ProfileView from '../views/ProfileView.vue'
+import CheckoutView from '../views/CheckoutView.vue'
+import PaymentView from '../views/PaymentView.vue'
+
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -21,10 +24,23 @@ const router = createRouter({
       component: HomeView
     },
     {
+  path: '/pagamento/:id', // :id será o número do pedido
+  name: 'pagamento',
+  component: PaymentView,
+  meta: { requiresAuth: true }
+},
+    {
       path: '/produtos',
       name: 'catalogo',
       component: CatalogView
     },
+    {
+      path: '/checkout',
+  name: 'checkout',
+  component: CheckoutView,
+  // Opcional: Adicionar meta para exigir login
+  meta: { requiresAuth: true } 
+  },
     {
       path: '/produto/:slug',
       name: 'produto',
