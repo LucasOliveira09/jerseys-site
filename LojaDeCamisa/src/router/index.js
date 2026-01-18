@@ -10,6 +10,8 @@ import CartView from '../views/CartView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import CheckoutView from '../views/CheckoutView.vue'
 import PaymentView from '../views/PaymentView.vue'
+import ForgotPasswordView from '../views/ForgotPasswordView.vue'
+import UpdatePasswordView from '../views/UpdatePasswordView.vue'
 
 
 const router = createRouter({
@@ -35,6 +37,16 @@ const router = createRouter({
       component: CatalogView
     },
     {
+    path: '/recuperar-senha',
+    name: 'recuperar-senha',
+    component: ForgotPasswordView
+  },
+  {
+    path: '/resetar-senha', // Essa é a rota que colocamos no redirectTo
+    name: 'resetar-senha',
+    component: UpdatePasswordView
+  },
+    {
       path: '/checkout',
   name: 'checkout',
   component: CheckoutView,
@@ -52,8 +64,8 @@ const router = createRouter({
       component: LoginView
     },
     {
-      path: '/cadastro',
-      name: 'cadastro',
+      path: '/registro',
+      name: 'registro',
       component: RegisterView
     },
     {

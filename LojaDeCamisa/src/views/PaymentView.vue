@@ -2,28 +2,25 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabase'
-import QRCode from 'qrcode' // Biblioteca que instalamos
 
 const route = useRoute()
 const router = useRouter()
 const order = ref(null)
 const loading = ref(true)
-const qrCodeImage = ref('')
 
-// Configuração do WhatsApp
-const whatsappNumber = '5511999999999' // SEU NÚMERO AQUI
-const msgZap = 'Olá! Fiz um pedido e tenho uma dúvida sobre o pagamento.'
+// Variáveis visuais do PIX
+const pixImage = ref('')
+const pixCopyPaste = ref('')
 
 let realtimeChannel = null
 
-// --- CARREGAR PEDIDO ---
 onMounted(async () => {
   const orderId = route.params.id
-
-  // 1. Busca dados do pedido + itens + produtos
+  
+  // 1. Busca os dados do pedido no banco
   const { data, error } = await supabase
     .from('orders')
-    .select('*, order_items(*, products(*))')
+    .select('*, order_items(*)') 
     .eq('id', orderId)
     .single()
 
@@ -35,18 +32,21 @@ onMounted(async () => {
 
   order.value = data
 
-  // 2. Se for PIX pendente, gera a imagem do QR Code
-  if (data.payment_method === 'pix' && data.pix_code && data.status !== 'Pago') {
-    try {
-      qrCodeImage.value = await QRCode.toDataURL(data.pix_code)
-    } catch (e) {
-      console.error('Erro ao gerar QR', e)
-    }
+  // 2. Se for PIX e estiver Pendente, monta o QR Code
+  if (data.payment_method === 'pix' && data.status !== 'Pago') {
+     // Pega o código copia e cola salvo no banco
+     pixCopyPaste.value = data.pix_code
+     
+     // Gera a imagem visualmente usando API externa baseada no código
+     if (data.pix_code) {
+        // Codificamos a URL para evitar erros com caracteres especiais
+        pixImage.value = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data.pix_code)}`
+     }
   }
 
-  // 3. Se não estiver pago, fica vigiando
+  // 3. Inicia o "Polling" Inteligente (Realtime)
   if (data.status !== 'Pago') {
-    iniciarEscuta(orderId)
+    iniciarEscutaRealtime(orderId)
   }
 
   loading.value = false
@@ -56,93 +56,110 @@ onUnmounted(() => {
   if (realtimeChannel) supabase.removeChannel(realtimeChannel)
 })
 
-// --- REALTIME ---
-function iniciarEscuta(id) {
-  realtimeChannel = supabase.channel('pagamento_page')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` }, 
-    (payload) => {
-      if (payload.new.status === 'Pago' || payload.new.payment_status === 'Aprovado') {
-        order.value.status = 'Pago' // Atualiza a tela automaticamente
+// --- ESCUTA MUDANÇAS NO BANCO EM TEMPO REAL ---
+function iniciarEscutaRealtime(id) {
+  console.log(`🔌 Conectando ao Realtime para o pedido ${id}...`)
+  
+  realtimeChannel = supabase.channel(`order_status_${id}`)
+    .on(
+      'postgres_changes', 
+      { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` }, 
+      (payload) => {
+        console.log("🔔 Status mudou:", payload.new.status)
+        
+        // Atualiza a tela se virar Pago
+        if (payload.new.status === 'Pago' || payload.new.payment_status === 'approved') {
+          // Atualizamos o objeto order reativamente
+          order.value = { ...order.value, ...payload.new }
+          
+          // Vibração no celular (UX)
+          if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        }
       }
-    })
+    )
     .subscribe()
 }
 
-const copiarPix = () => {
-  navigator.clipboard.writeText(order.value.pix_code)
-  alert('Código PIX copiado!')
+const copiarCodigo = () => {
+  if (pixCopyPaste.value) {
+    navigator.clipboard.writeText(pixCopyPaste.value)
+    alert('Código PIX copiado!')
+  }
 }
 
 const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+
+// Função segura para exibir o ID (seja número ou texto)
+const formatOrderId = (id) => {
+  if (!id) return ''
+  return String(id).toUpperCase().slice(0, 8)
+}
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0f0f0f] text-white font-sans py-12 px-4">
+  <div class="min-h-screen bg-[#0f0f0f] text-white font-sans py-10 px-4 flex justify-center items-center">
     
-    <div v-if="loading" class="flex justify-center mt-20">
+    <div v-if="loading">
       <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-atk-neon"></div>
     </div>
 
-    <div v-else class="max-w-3xl mx-auto space-y-8 animate-fade-in">
-
-      <div class="text-center space-y-4">
-        <div v-if="order.status === 'Pago'" class="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(34,197,94,0.6)]">
-          <svg class="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
-        </div>
-        
-        <div v-else class="w-20 h-20 bg-yellow-500/20 text-yellow-500 rounded-full flex items-center justify-center mx-auto border-2 border-yellow-500">
-           <span class="text-3xl">⏳</span>
-        </div>
-
-        <h1 class="text-3xl font-extrabold uppercase tracking-tight">
-          {{ order.status === 'Pago' ? 'Pagamento Confirmado!' : 'Aguardando Pagamento' }}
+    <div v-else class="max-w-2xl w-full space-y-6 animate-fade-in">
+      
+      <div class="text-center space-y-2">
+        <h1 class="text-2xl font-bold uppercase text-atk-neon">
+          {{ order.status === 'Pago' ? 'Pagamento Confirmado!' : 'Finalize seu Pagamento' }}
         </h1>
-        <p class="text-gray-400">Pedido #{{ order.id }}</p>
-      </div>
-
-      <div v-if="order.payment_method === 'pix' && order.status !== 'Pago'" class="bg-[#1a1a1a] border border-atk-neon/30 p-8 rounded-2xl shadow-2xl relative overflow-hidden text-center">
-        <h2 class="text-xl font-bold mb-4 text-white">Escaneie o QR Code</h2>
         
-        <div class="bg-white p-4 rounded-xl w-64 h-64 mx-auto mb-6 flex items-center justify-center">
-           <img v-if="qrCodeImage" :src="qrCodeImage" class="w-full h-full object-contain">
-        </div>
-
-        <div class="max-w-md mx-auto">
-          <p class="text-xs text-gray-500 uppercase font-bold mb-2">Ou use o Copia e Cola:</p>
-          <div class="flex gap-2">
-            <input :value="order.pix_code" readonly class="w-full bg-black/50 border border-white/10 rounded px-3 text-xs text-gray-400 outline-none">
-            <button @click="copiarPix" class="bg-atk-neon text-atk-dark px-4 py-3 rounded font-bold uppercase hover:bg-white transition text-xs">Copiar</button>
-          </div>
-        </div>
-
-        <div class="mt-6 flex justify-center items-center gap-2 text-atk-neon animate-pulse text-sm font-bold">
-           <div class="w-2 h-2 bg-atk-neon rounded-full"></div>
-           Detectando pagamento automaticamente...
-        </div>
+        <p class="text-gray-400">Pedido #{{ formatOrderId(order.id) }}</p>
       </div>
 
-      <div class="bg-[#151515] p-6 rounded-xl border border-white/10">
-        <h3 class="font-bold text-lg uppercase mb-4 border-b border-white/10 pb-2">Resumo da Compra</h3>
-        <div class="space-y-4">
-          <div v-for="item in order.order_items" :key="item.id" class="flex justify-between items-center">
-             <div>
-                <p class="font-bold">{{ item.products?.name || 'Produto' }}</p>
-                <p class="text-xs text-gray-400">Tam: {{ item.size }} | Qtd: {{ item.quantity }}</p>
-             </div>
-             <p class="font-bold text-atk-neon">{{ formatMoney(item.price) }}</p>
-          </div>
+      <div v-if="order.status === 'Pago'" class="bg-[#151515] border border-green-500 p-10 rounded-2xl text-center space-y-6 shadow-[0_0_50px_rgba(34,197,94,0.3)]">
+        <div class="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto animate-bounce">
+          <svg class="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="4"><path d="M5 13l4 4L19 7"/></svg>
         </div>
-        <div class="border-t border-white/10 mt-4 pt-4 flex justify-between items-center text-xl font-extrabold">
-           <span>Total</span>
-           <span>{{ formatMoney(order.total) }}</span>
+        <div>
+          <h2 class="text-2xl font-bold text-white mb-2">Tudo certo!</h2>
+          <p class="text-green-400">Seu pagamento foi aprovado. Já estamos separando seus itens.</p>
         </div>
+        <button @click="router.push('/')" class="bg-white text-black px-8 py-3 rounded-lg font-bold uppercase hover:bg-gray-200 transition w-full">
+          Voltar para Loja
+        </button>
       </div>
 
-      <div class="grid gap-4">
-        <a :href="`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msgZap)}`" target="_blank" class="bg-[#25D366] text-white py-4 rounded-xl font-bold uppercase text-center hover:bg-[#1ebc57] transition flex items-center justify-center gap-2">
-           <span>📱</span> Falar no WhatsApp
-        </a>
-        <button @click="router.push('/')" class="text-gray-500 hover:text-white text-sm underline">Voltar para a Loja</button>
+      <div v-else class="bg-[#1a1a1a] border border-atk-neon/30 p-8 rounded-2xl shadow-xl">
+        
+        <div class="text-center mb-6 border-b border-white/10 pb-4">
+          <p class="text-gray-300 mb-1">Total a pagar</p>
+          <p class="text-4xl font-extrabold text-white">{{ formatMoney(order.total) }}</p>
+        </div>
+
+        <div class="flex flex-col items-center gap-6">
+          <div class="bg-white p-4 rounded-xl shadow-lg">
+            <img v-if="pixImage" :src="pixImage" class="w-64 h-64 object-contain" alt="QR Code Pix">
+            <div v-else class="w-64 h-64 flex flex-col items-center justify-center text-black font-bold bg-gray-100 rounded">
+               <span class="animate-pulse">Carregando QR...</span>
+               <span class="text-xs font-normal mt-2 text-gray-500 text-center px-2">Se demorar, use o Copia e Cola abaixo.</span>
+            </div>
+          </div>
+
+          <div class="w-full">
+            <label class="text-xs text-gray-500 uppercase font-bold mb-2 block text-center">Pix Copia e Cola</label>
+            <div class="flex gap-2">
+              <input :value="pixCopyPaste" readonly class="w-full bg-black border border-white/20 rounded px-4 py-3 text-xs text-gray-400 outline-none truncate font-mono">
+              <button @click="copiarCodigo" class="bg-atk-neon text-atk-dark px-6 font-bold uppercase rounded hover:bg-white transition text-sm">
+                Copiar
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 text-sm text-atk-neon bg-atk-neon/10 px-4 py-2 rounded-full mt-4 border border-atk-neon/20">
+            <span class="relative flex h-3 w-3">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-atk-neon opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-atk-neon"></span>
+            </span>
+            Aguardando confirmação automática...
+          </div>
+        </div>
       </div>
 
     </div>
@@ -150,6 +167,6 @@ const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', c
 </template>
 
 <style scoped>
-.animate-fade-in { animation: fadeIn 0.5s ease-out; }
+.animate-fade-in { animation: fadeIn 0.8s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 </style>

@@ -1,95 +1,78 @@
 <script setup>
-import { ref } from "vue";
-import { useRouter, RouterLink } from "vue-router";
-import { supabase } from "../supabase";
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { supabase } from '../supabase'
 
-const router = useRouter();
-const name = ref("");
-const email = ref("");
-const password = ref("");
-const loading = ref(false);
-const errorMsg = ref("");
+const router = useRouter()
+const name = ref('')
+const email = ref('')
+const password = ref('')
+const loading = ref(false)
 
-async function handleRegister() {
-  loading.value = true;
-  errorMsg.value = "";
+const handleRegister = async () => {
+  loading.value = true
+  
+  // 1. Cria usuário na Auth
+  const { data, error } = await supabase.auth.signUp({
+    email: email.value,
+    password: password.value,
+  })
 
-  try {
-    // 1. Criar Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.value,
-      password: password.value,
-    });
-    if (authError) throw authError;
+  if (error) {
+    alert('Erro: ' + error.message)
+    loading.value = false
+    return
+  }
 
-    // 2. Salvar Perfil
-    if (authData.user) {
-      await supabase.from("profiles").insert({
-        id: authData.user.id,
-        full_name: name.value,
-      });
-    }
-
-    alert("Cadastro realizado! Faça login.");
-    router.push("/login");
-  } catch (error) {
-    errorMsg.value = error.message;
-  } finally {
-    loading.value = false;
+  // 2. Cria perfil na tabela profiles
+  if (data.user) {
+    await supabase.from('profiles').insert({
+      id: data.user.id,
+      full_name: name.value,
+      email: email.value
+    })
+    alert('Conta criada com sucesso!')
+    router.push('/')
   }
 }
 </script>
 
 <template>
-  <div
-    class="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4"
-  >
-    <div class="max-w-md w-full bg-white p-8 rounded-xl shadow-lg">
-      <h2 class="text-3xl font-extrabold text-center text-gray-900 mb-6">
-        Crie sua Conta
-      </h2>
+  <div class="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
+    <div class="bg-[#1a1a1a] p-8 rounded-2xl w-full max-w-md border border-white/10 shadow-2xl">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-extrabold text-white uppercase tracking-tighter">Criar Conta</h1>
+        <p class="text-gray-400 text-sm mt-2">Junte-se à nossa comunidade.</p>
+      </div>
 
-      <form class="space-y-4" @submit.prevent="handleRegister">
-        <input
-          v-model="name"
-          type="text"
-          required
-          placeholder="Nome Completo"
-          class="w-full px-3 py-2 border appearance-none rounded-md relative block border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-atk-card focus:border-atk-card focus:z-10 sm:text-sm"
-        />
-        <input
-          v-model="email"
-          type="email"
-          required
-          placeholder="Email"
-          class="w-full px-3 py-2 appearance-none rounded-md relative block border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-atk-card focus:border-atk-card focus:z-10 sm:text-sm"
-        />
-        <input
-          v-model="password"
-          type="password"
-          required
-          placeholder="Senha (mínimo 6 dígitos)"
-          class="w-full px-3 py-2 appearance-none rounded-md relative block border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-atk-card focus:border-atk-card focus:z-10 sm:text-sm"
-        />
-
-        <div v-if="errorMsg" class="text-red-600 text-md text-center">
-          {{ errorMsg }}
+      <form @submit.prevent="handleRegister" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nome Completo</label>
+          <input v-model="name" type="text" required class="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none uppercase">
         </div>
 
-        <button
-          :disabled="loading"
-          class="w-full py-2 px-4 bg-atk-neon text-sm text-atk-dark hover:bg-atk-hover font-bold transition"
-        >
-          {{ loading ? "Criando..." : "Cadastrar" }}
+        <div>
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">E-mail</label>
+          <input v-model="email" type="email" required class="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Senha</label>
+          <input v-model="password" type="password" required minlength="6" class="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none">
+        </div>
+
+        <button :disabled="loading" class="w-full bg-atk-neon text-atk-dark font-extrabold py-3 rounded-lg uppercase tracking-widest hover:bg-white transition flex justify-center">
+          <span v-if="loading" class="animate-spin h-5 w-5 border-2 border-black rounded-full border-t-transparent"></span>
+          <span v-else>Cadastrar</span>
         </button>
       </form>
 
-      <p class="mt-4 text-center text-sm text-atk-card">
-        Já tem conta?
-        <RouterLink to="/login" class="text-atk-dark font-bold"
-          >Entrar</RouterLink
-        >
-      </p>
+      <div class="mt-6 text-center text-sm">
+        <p class="text-gray-400">
+          Já tem conta? 
+          <router-link to="/login" class="text-atk-neon font-bold hover:underline">Entrar</router-link>
+        </p>
+      </div>
     </div>
   </div>
 </template>
