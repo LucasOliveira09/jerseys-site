@@ -44,83 +44,67 @@ async function carregarDados() {
   loading.value = true
   
   const { data: { user: currentUser } } = await supabase.auth.getUser()
-  if (!currentUser) {
-    router.push('/login')
-    return
-  }
+  if (!currentUser) { router.push('/login'); return }
   user.value = currentUser
 
-  const { data: profileData } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', currentUser.id)
-    .single()
-  
-  if (profileData) {
-    formPerfil.value = { ...profileData, email: currentUser.email }
-  }
+  // 1. Carrega Perfil
+  const { data: profileData } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
+  if (profileData) formPerfil.value = { ...profileData, email: currentUser.email }
 
-  const { data: ordersData } = await supabase
+  // 2. Carrega Pedidos (CORREÇÃO AQUI NA QUERY)
+  // Nota: Se sua tabela de produtos chama 'products', mude 'produtos' para 'products' abaixo
+  const { data: ordersData, error } = await supabase
     .from('orders')
     .select(`
-      id, created_at, total, status,
+      id, created_at, total, status, shipping_cost,
       order_items (
         id, quantity, price, size, customization,
-        produtos ( name, image_cover ) 
+        product:products ( name, image_cover ) 
       )
     `)
     .eq('user_id', currentUser.id)
     .order('created_at', { ascending: false })
   
+  // Ajuste técnico: Se você usou o nome 'produtos' na tabela, mude 'product:products' para 'produtos'
+  
+  if (error) console.error("Erro ao buscar pedidos:", error)
   orders.value = ordersData || []
   loading.value = false
 }
 
-// --- VALIDAÇÃO DE CPF (Lógica Oficial) ---
-function validarCPF(cpf) {
-  cpf = cpf.replace(/[^\d]+/g, '') // Remove tudo que não é número
-  
-  if (cpf === '') return false
-  // Elimina CPFs invalidos conhecidos (todos numeros iguais)
-  if (cpf.length !== 11 || 
-      /^(\d)\1{10}$/.test(cpf))
-      return false
+// --- AÇÃO DE PAGAR (NOVO) ---
+function irParaPagamento(orderId) {
+  router.push(`/pagamento/${orderId}`)
+}
 
-  // Valida 1o digito
+// --- LÓGICA DE CPF E MÁSCARAS (Mantido igual) ---
+function validarCPF(cpf) {
+  cpf = cpf.replace(/[^\d]+/g, '')
+  if (cpf === '') return false
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false
   let add = 0
   for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i)
   let rev = 11 - (add % 11)
   if (rev === 10 || rev === 11) rev = 0
   if (rev !== parseInt(cpf.charAt(9))) return false
-
-  // Valida 2o digito
   add = 0
   for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i)
   rev = 11 - (add % 11)
   if (rev === 10 || rev === 11) rev = 0
   if (rev !== parseInt(cpf.charAt(10))) return false
-
   return true
 }
 
-// --- SALVAR PERFIL (Com Validação) ---
-// --- SALVAR PERFIL (CORRIGIDO) ---
 async function salvarPerfil() {
-  // 1. Validação do CPF
   if (formPerfil.value.cpf && !validarCPF(formPerfil.value.cpf)) {
-    alert('CPF Inválido! Por favor verifique os números digitados.')
-    return
+    alert('CPF Inválido!'); return
   }
-
   saving.value = true
   try {
-    // 2. Limpa o CPF para salvar só números (Remove pontos e traços)
-    const cpfLimpo = formPerfil.value.cpf ? formPerfil.value.cpf.replace(/\D/g, '') : null
-
     const updates = {
       id: user.value.id,
       full_name: formPerfil.value.full_name,
-      cpf: cpfLimpo, // <--- AQUI ESTÁ A CORREÇÃO
+      cpf: formPerfil.value.cpf ? formPerfil.value.cpf.replace(/\D/g, '') : null,
       phone: formPerfil.value.phone,
       cep: formPerfil.value.cep,
       address: formPerfil.value.address,
@@ -131,21 +115,11 @@ async function salvarPerfil() {
       state: formPerfil.value.state,
       updated_at: new Date(),
     }
-
     const { error } = await supabase.from('profiles').upsert(updates)
-    
-    if (error) {
-      // Se der erro de constraint, avisa
-      if (error.message.includes('cpf_formato') || error.message.includes('check constraint')) {
-        throw new Error('O banco de dados rejeitou o formato do CPF. Tente rodar o SQL de correção.')
-      }
-      throw error
-    }
-    
-    alert('Dados atualizados com sucesso! ✅')
+    if (error) throw error
+    alert('Dados atualizados! ✅')
   } catch (error) {
-    console.error(error)
-    alert('Erro ao atualizar: ' + error.message)
+    alert('Erro: ' + error.message)
   } finally {
     saving.value = false
   }
@@ -164,9 +138,7 @@ async function buscarCep() {
         formPerfil.value.state = data.uf
         document.getElementById('numeroInput')?.focus()
       }
-    } catch (e) {
-      console.error('Erro CEP', e)
-    }
+    } catch (e) {}
   }
 }
 
@@ -202,7 +174,7 @@ const formatMoney = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency
 const statusClass = (status) => {
   if (status === 'Pendente') return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20'
   if (status === 'Pago') return 'text-blue-500 bg-blue-500/10 border-blue-500/20'
-  if (status === 'Enviado') return 'text-purple-500 bg-purple-500/10 border-purple-500/20'
+  if (status === 'Cancelado') return 'text-red-500 bg-red-500/10 border-red-500/20'
   if (status === 'Entregue') return 'text-green-500 bg-green-500/10 border-green-500/20'
   return 'text-gray-500'
 }
@@ -230,21 +202,10 @@ const statusClass = (status) => {
         </div>
 
         <nav class="bg-[#151515] rounded-xl border border-white/10 overflow-hidden">
-          <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
-            📊 Visão Geral
-          </button>
-          <button @click="activeTab = 'dados'" :class="activeTab === 'dados' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
-            👤 Meus Dados
-          </button>
-          <button @click="activeTab = 'pedidos'" :class="activeTab === 'pedidos' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
-            📦 Meus Pedidos <span class="bg-atk-neon text-atk-dark text-[10px] px-1.5 rounded-full ml-auto">{{ orders.length }}</span>
-          </button>
-          <button @click="activeTab = 'favoritos'" :class="activeTab === 'favoritos' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
-            ❤️ Favoritos
-          </button>
-          <button @click="handleLogout" class="w-full text-left px-6 py-4 font-bold text-sm text-red-500 hover:bg-red-500/10 transition flex items-center gap-3 border-t border-white/5">
-            🚪 Sair
-          </button>
+          <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">📊 Visão Geral</button>
+          <button @click="activeTab = 'dados'" :class="activeTab === 'dados' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">👤 Meus Dados</button>
+          <button @click="activeTab = 'pedidos'" :class="activeTab === 'pedidos' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">📦 Meus Pedidos <span class="bg-atk-neon text-atk-dark text-[10px] px-1.5 rounded-full ml-auto">{{ orders.length }}</span></button>
+          <button @click="handleLogout" class="w-full text-left px-6 py-4 font-bold text-sm text-red-500 hover:bg-red-500/10 transition flex items-center gap-3 border-t border-white/5">🚪 Sair</button>
         </nav>
       </div>
 
@@ -255,109 +216,60 @@ const statusClass = (status) => {
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="bg-[#1a1a1a] p-6 rounded-xl border border-white/10">
               <p class="text-gray-400 text-xs uppercase mb-1">Total Gasto</p>
-              <p class="text-2xl font-bold text-white">{{ formatMoney(orders.reduce((acc, o) => acc + Number(o.total), 0)) }}</p>
+              <p class="text-2xl font-bold text-white">{{ formatMoney(orders.reduce((acc, o) => o.status !== 'Cancelado' ? acc + Number(o.total) : acc, 0)) }}</p>
             </div>
             <div class="bg-[#1a1a1a] p-6 rounded-xl border border-white/10">
               <p class="text-gray-400 text-xs uppercase mb-1">Pedidos</p>
               <p class="text-2xl font-bold text-atk-neon">{{ orders.length }}</p>
-            </div>
-            <div class="bg-[#1a1a1a] p-6 rounded-xl border border-white/10">
-              <p class="text-gray-400 text-xs uppercase mb-1">Status</p>
-              <p class="text-lg font-bold" :class="nivelTorcedor.cor">{{ nivelTorcedor.nome }}</p>
             </div>
           </div>
         </div>
 
         <div v-if="activeTab === 'dados'" class="space-y-6 animate-fade-in">
           <h2 class="text-2xl font-bold uppercase mb-2">Editar Perfil</h2>
-          <p class="text-sm text-gray-400 mb-6">Mantenha seus dados atualizados para garantir a entrega dos seus mantos.</p>
-
           <form @submit.prevent="salvarPerfil" class="bg-[#1a1a1a] p-6 md:p-8 rounded-xl border border-white/10 space-y-6">
-            
-            <div>
-              <h3 class="text-atk-neon font-bold uppercase text-xs mb-4 border-b border-white/10 pb-2">Dados Pessoais</h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Nome Completo</label>
-                  <input v-model="formPerfil.full_name" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Email (Login)</label>
-                  <input v-model="formPerfil.email" type="text" disabled class="w-full bg-white/5 border border-white/10 rounded p-3 text-gray-400 cursor-not-allowed" />
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 uppercase mb-1">CPF</label>
-                  <input :value="formPerfil.cpf" @input="mascaraCPF" type="text" maxlength="14" placeholder="000.000.000-00" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Telefone / WhatsApp</label>
-                  <input :value="formPerfil.phone" @input="mascaraTelefone" type="text" maxlength="15" placeholder="(00) 00000-0000" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-              </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Nome</label><input v-model="formPerfil.full_name" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">CPF</label><input :value="formPerfil.cpf" @input="mascaraCPF" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Telefone</label><input :value="formPerfil.phone" @input="mascaraTelefone" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">CEP</label><input v-model="formPerfil.cep" @blur="buscarCep" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div class="md:col-span-2"><label class="block text-xs text-gray-500 uppercase mb-1">Endereço</label><input v-model="formPerfil.address" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Número</label><input id="numeroInput" v-model="formPerfil.number" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Bairro</label><input v-model="formPerfil.district" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Cidade</label><input v-model="formPerfil.city" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">UF</label><input v-model="formPerfil.state" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none uppercase" /></div>
             </div>
-
-            <div>
-              <h3 class="text-atk-neon font-bold uppercase text-xs mb-4 border-b border-white/10 pb-2">Endereço de Entrega</h3>
-              <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">CEP</label>
-                  <input v-model="formPerfil.cep" @blur="buscarCep" type="text" maxlength="9" placeholder="00000-000" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div class="md:col-span-3">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Rua / Avenida</label>
-                  <input v-model="formPerfil.address" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Número</label>
-                  <input id="numeroInput" v-model="formPerfil.number" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div class="md:col-span-3">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Complemento</label>
-                  <input v-model="formPerfil.complement" type="text" placeholder="Apto, Bloco, etc." class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div class="md:col-span-2">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Bairro</label>
-                  <input v-model="formPerfil.district" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">Cidade</label>
-                  <input v-model="formPerfil.city" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" />
-                </div>
-                <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-500 uppercase mb-1">UF</label>
-                  <input v-model="formPerfil.state" type="text" maxlength="2" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none uppercase" />
-                </div>
-              </div>
-            </div>
-
-            <div class="text-right">
-              <button type="submit" :disabled="saving" class="bg-atk-neon text-atk-dark font-extrabold uppercase px-8 py-3 rounded hover:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed">
-                {{ saving ? 'Salvando...' : 'Salvar Alterações' }}
-              </button>
-            </div>
-
+            <button type="submit" :disabled="saving" class="bg-atk-neon text-atk-dark font-extrabold uppercase px-8 py-3 rounded hover:bg-white transition w-full">{{ saving ? 'Salvando...' : 'Salvar Alterações' }}</button>
           </form>
         </div>
 
         <div v-if="activeTab === 'pedidos'" class="animate-fade-in space-y-4">
           <h2 class="text-2xl font-bold uppercase mb-6">Histórico de Pedidos</h2>
           <div v-if="orders.length === 0" class="text-center py-12 text-gray-500">Nenhum pedido encontrado.</div>
-          <div v-for="order in orders" :key="order.id" class="bg-[#151515] border border-white/10 rounded-xl overflow-hidden">
+          
+          <div v-for="order in orders" :key="order.id" class="bg-[#151515] border border-white/10 rounded-xl overflow-hidden hover:border-atk-neon/30 transition">
             <div class="bg-[#1a1a1a] p-4 flex flex-wrap justify-between items-center border-b border-white/5 gap-4">
-              <div><span class="text-gray-500 text-xs uppercase block">Data</span><span class="font-bold text-sm">{{ formatDate(order.created_at) }}</span></div>
-              <div><span class="text-gray-500 text-xs uppercase block">Total</span><span class="font-bold text-atk-neon">{{ formatMoney(order.total) }}</span></div>
-              <div><span class="text-gray-500 text-xs uppercase block mb-1">Status</span><span :class="`px-2 py-0.5 rounded text-[10px] font-bold border ${statusClass(order.status)}`">{{ order.status }}</span></div>
-              <button @click="abrirDetalhes(order)" class="text-xs bg-white/10 hover:bg-atk-neon hover:text-atk-dark px-3 py-2 rounded font-bold uppercase transition">Ver Detalhes</button>
+              <div class="flex items-center gap-4">
+                 <div><span class="text-gray-500 text-xs uppercase block">Data</span><span class="font-bold text-sm">{{ formatDate(order.created_at) }}</span></div>
+                 <div><span class="text-gray-500 text-xs uppercase block">Total</span><span class="font-bold text-atk-neon">{{ formatMoney(order.total) }}</span></div>
+                 <div><span class="text-gray-500 text-xs uppercase block mb-1">Status</span><span :class="`px-2 py-0.5 rounded text-[10px] font-bold border ${statusClass(order.status)}`">{{ order.status }}</span></div>
+              </div>
+              
+              <div class="flex gap-2">
+                 <button v-if="order.status === 'Pendente'" @click="irParaPagamento(order.id)" class="text-xs bg-green-500 text-white hover:bg-green-400 px-4 py-2 rounded font-bold uppercase transition flex items-center gap-2 animate-pulse">
+                    Pagar Agora 💳
+                 </button>
+                 
+                 <button @click="abrirDetalhes(order)" class="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded font-bold uppercase transition">
+                    Detalhes
+                 </button>
+              </div>
             </div>
-            <div class="p-4 text-xs text-gray-500">📦 {{ order.order_items.length }} itens no pacote.</div>
+            <div class="p-4 text-xs text-gray-500 flex justify-between">
+               <span>📦 {{ order.order_items.length }} itens no pacote.</span>
+               <span class="text-gray-600">ID: #{{ order.id.slice(0,8) }}</span>
+            </div>
           </div>
-        </div>
-
-        <div v-if="activeTab === 'favoritos'" class="animate-fade-in text-center py-20 bg-[#151515] rounded-xl border border-dashed border-white/10">
-          <p class="text-4xl mb-4">❤️</p>
-          <h3 class="text-xl font-bold text-white">Sua lista de desejos</h3>
-          <p class="text-gray-400 text-sm mb-6">Salve os mantos que você está de olho.</p>
-          <button @click="router.push('/produtos')" class="bg-atk-neon text-atk-dark px-6 py-2 rounded font-bold uppercase text-sm">Explorar Loja</button>
         </div>
 
       </div>
@@ -366,17 +278,23 @@ const statusClass = (status) => {
     <div v-if="showModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showModal = false">
       <div class="bg-[#1a1a1a] w-full max-w-2xl rounded-xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in">
         <div class="bg-[#202020] p-4 border-b border-white/5 flex justify-between items-center">
-          <div><h3 class="font-bold text-white uppercase tracking-wider">Detalhes do Pedido</h3><p class="text-xs text-gray-500">ID: #{{ selectedOrder.id }}</p></div>
+          <div>
+              <h3 class="font-bold text-white uppercase tracking-wider">Detalhes do Pedido</h3>
+              <p :class="`text-xs font-bold mt-1 ${statusClass(selectedOrder.status)}`">{{ selectedOrder.status }}</p>
+          </div>
           <button @click="showModal = false" class="text-gray-400 hover:text-white text-2xl">&times;</button>
         </div>
-        <div class="p-4 overflow-y-auto custom-scrollbar space-y-3">
+        
+        <div class="p-4 overflow-y-auto custom-scrollbar space-y-3 flex-grow">
           <div v-for="item in selectedOrder.order_items" :key="item.id" class="flex gap-4 bg-black/20 p-3 rounded border border-white/5 items-center">
             <div class="w-16 h-16 bg-white/5 rounded flex items-center justify-center flex-shrink-0 overflow-hidden border border-white/10">
-               <img v-if="item.produtos?.image_cover" :src="item.produtos.image_cover" class="w-full h-full object-contain p-1">
+               <img v-if="item.product?.image_cover || item.produtos?.image_cover" 
+                    :src="item.product?.image_cover || item.produtos?.image_cover" 
+                    class="w-full h-full object-contain p-1">
                <span v-else class="text-xs text-gray-500">Sem foto</span>
             </div>
             <div class="flex-grow">
-              <p class="font-bold text-sm text-white">{{ item.produtos?.name || 'Produto' }}</p>
+              <p class="font-bold text-sm text-white">{{ item.product?.name || item.produtos?.name || 'Produto Removido' }}</p>
               <div class="flex flex-wrap gap-3 text-xs text-gray-400 mt-1">
                 <span class="bg-white/5 px-2 py-0.5 rounded">Tam: <strong class="text-white">{{ item.size }}</strong></span>
                 <span class="bg-white/5 px-2 py-0.5 rounded">Qtd: <strong class="text-white">{{ item.quantity }}</strong></span>
@@ -389,6 +307,23 @@ const statusClass = (status) => {
               <p class="font-bold text-sm text-white">{{ formatMoney(item.price * item.quantity) }}</p>
             </div>
           </div>
+        </div>
+
+        <div class="bg-[#202020] p-4 border-t border-white/5 space-y-2">
+            <div class="flex justify-between text-gray-400 text-sm">
+                <span>Frete</span>
+                <span>{{ formatMoney(selectedOrder.shipping_cost || 0) }}</span>
+            </div>
+            <div class="flex justify-between text-white font-bold text-lg border-t border-white/10 pt-2">
+                <span>Total</span>
+                <span class="text-atk-neon">{{ formatMoney(selectedOrder.total) }}</span>
+            </div>
+            
+            <button v-if="selectedOrder.status === 'Pendente'" 
+                    @click="irParaPagamento(selectedOrder.id)" 
+                    class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded uppercase mt-4 transition">
+                Realizar Pagamento Agora
+            </button>
         </div>
       </div>
     </div>
