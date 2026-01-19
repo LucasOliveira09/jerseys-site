@@ -79,7 +79,7 @@ onMounted(async () => {
 
   // 2. Inicializa o Mercado Pago (AGORA É SEGURO)
   // 🔴 IMPORTANTE: Coloque sua PUBLIC KEY aqui (não a Access Token)
-  mpInstance.value = new window.MercadoPago(import.meta.env.VITE_MP_PUBLIC_KEY, {
+  mpInstance.value = new window.MercadoPago('TEST-6726b830-d784-437f-8be0-0265c087fddc', {
     locale: 'pt-BR'
   })
 
