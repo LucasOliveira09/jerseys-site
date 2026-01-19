@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
 import { supabase } from '../supabase'
@@ -27,7 +27,10 @@ const installmentsList = ref([])
 const selectedInstallment = ref(null)
 const issuerId = ref(null)
 const paymentMethodId = ref(null)
-const mpInstance = ref(null) // Instância do Mercado Pago
+const paymentMethodImg = ref(null) // <--- NOVA VARIÁVEL PARA A FOTO
+
+// Instância do Mercado Pago
+let mpInstance = null 
 
 // --- CÁLCULOS ---
 const subtotal = computed(() => cart.itens.reduce((acc, item) => acc + (item.price_sale * item.quantidade), 0))
@@ -47,16 +50,20 @@ const totalGeral = computed(() => {
 
 const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-// --- FUNÇÃO PARA CARREGAR O SCRIPT DO MP DINAMICAMENTE ---
+// --- CARREGADOR DO SCRIPT ---
 const loadMercadoPagoScript = () => {
   return new Promise((resolve) => {
     if (window.MercadoPago) {
-      resolve() // Já estava carregado
+      resolve() 
       return
     }
     const script = document.createElement('script')
     script.src = 'https://sdk.mercadopago.com/js/v2'
     script.onload = () => resolve()
+    script.onerror = () => {
+      alert("Erro ao carregar sistema de pagamento.")
+      loading.value = false
+    }
     document.head.appendChild(script)
   })
 }
@@ -74,45 +81,65 @@ onMounted(async () => {
   
   if (profile.value.cpf) cardForm.value.identificationNumber = profile.value.cpf
 
-  // 1. Espera o script carregar
   await loadMercadoPagoScript()
 
-  // 2. Inicializa o Mercado Pago (AGORA É SEGURO)
-  // 🔴 IMPORTANTE: Coloque sua PUBLIC KEY aqui (não a Access Token)
-  mpInstance.value = new window.MercadoPago('TEST-6726b830-d784-437f-8be0-0265c087fddc', {
-    locale: 'pt-BR'
-  })
+  const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY
+  if (!publicKey) {
+     console.error("Configuração de pagamento ausente.")
+     return
+  }
+  
+  try {
+    mpInstance = new window.MercadoPago(publicKey, {
+      locale: 'pt-BR'
+    })
+  } catch (e) {
+    console.error("Erro ao iniciar MP", e)
+  }
 
   loading.value = false
 })
 
-// --- MÁSCARAS E DETECÇÃO ---
+// --- MÁSCARAS E BUSCA DE BANDEIRA ---
 const handleCardNumberChange = async () => {
   let num = cardForm.value.cardNumber.replace(/\D/g, '')
   cardForm.value.cardNumber = num.replace(/(\d{4})/g, '$1 ').trim().slice(0, 19)
 
-  if (num.length >= 6 && mpInstance.value) { // Verifica se mpInstance existe
+  if (num.length >= 6 && mpInstance) { 
     const bin = num.substring(0, 6)
     try {
-      const paymentMethods = await mpInstance.value.getPaymentMethods({ bin })
+      const paymentMethods = await mpInstance.getPaymentMethods({ bin })
+      
       if (paymentMethods.results.length > 0) {
-        paymentMethodId.value = paymentMethods.results[0].id
-        issuerId.value = paymentMethods.results[0].issuer.id
+        const method = paymentMethods.results[0]
+        paymentMethodId.value = method.id
+        // PEGA A IMAGEM DIRETO DA API (SOLUÇÃO DO PROBLEMA)
+        paymentMethodImg.value = method.secure_thumbnail || method.thumbnail 
+        issuerId.value = method.issuer.id
 
-        const installments = await mpInstance.value.getInstallments({
+        const installments = await mpInstance.getInstallments({
           amount: totalBase.value.toString(),
           bin: bin,
           paymentTypeId: 'credit_card'
         })
         
         if (installments.length > 0) {
-          installmentsList.value = installments[0].payer_costs
-          if (!selectedInstallment.value) selectedInstallment.value = installmentsList.value[0].installments
+          const allOptions = installments[0].payer_costs
+          // Filtro de 6x
+          installmentsList.value = allOptions.filter(item => item.installments <= 6)
+          
+          if (!selectedInstallment.value && installmentsList.value.length > 0) {
+            selectedInstallment.value = installmentsList.value[0].installments
+          }
         }
       }
     } catch (e) {
-      console.error('Erro ao buscar dados do cartão', e)
+      console.warn('Falha na detecção da bandeira', e)
     }
+  } else if (num.length < 6) {
+    paymentMethodId.value = null
+    paymentMethodImg.value = null
+    installmentsList.value = []
   }
 }
 
@@ -127,16 +154,16 @@ const handleExpiryChange = (e) => {
   }
 }
 
-// --- CRIAR PEDIDO ---
+// --- FINALIZAR COMPRA ---
 async function criarPedido() {
   if (!profile.value?.address || !profile.value?.number) {
-    alert('Preencha seu endereço no perfil antes de continuar.')
+    alert('Preencha seu endereço no perfil.')
     router.push('/perfil') 
     return
   }
 
   if (!profile.value.cpf) {
-     const cpf = prompt("CPF é obrigatório. Digite:")
+     const cpf = prompt("CPF é obrigatório:")
      if(!cpf) return
      await supabase.from('profiles').update({ cpf }).eq('id', user.value.id)
      profile.value.cpf = cpf
@@ -156,9 +183,9 @@ async function criarPedido() {
     }
 
     if (paymentMethod.value === 'credit_card') {
-      if (!mpInstance.value) throw new Error("Mercado Pago não carregou. Recarregue a página.")
+      if (!mpInstance) throw new Error("Sistema indisponível.")
       
-      const tokenResponse = await mpInstance.value.createCardToken({
+      const tokenResponse = await mpInstance.createCardToken({
         cardNumber: cardForm.value.cardNumber.replace(/\s/g, ''),
         cardholderName: cardForm.value.cardholderName,
         cardExpirationMonth: cardForm.value.cardExpirationMonth,
@@ -236,7 +263,7 @@ async function criarPedido() {
                 <input type="radio" v-model="paymentMethod" value="credit_card" class="accent-atk-neon w-5 h-5">
                 <div>
                   <span class="font-bold text-lg">Cartão de Crédito</span>
-                  <p class="text-xs text-gray-400">Até 3x sem juros (ou mais com juros)</p>
+                  <p class="text-xs text-gray-400">Parcelamento em até 6x</p>
                 </div>
               </div>
 
@@ -249,17 +276,21 @@ async function criarPedido() {
                       v-model="cardForm.cardNumber" 
                       @input="handleCardNumberChange"
                       type="text" placeholder="0000 0000 0000 0000" 
-                      class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon transition"
+                      class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon transition pr-14"
                     >
-                    <div v-if="paymentMethodId" class="absolute right-3 top-3 text-xs font-bold text-atk-neon uppercase">
-                      {{ paymentMethodId }}
+                    <div v-if="paymentMethodImg" class="absolute right-2 top-2 bg-white rounded p-1 h-8 w-12 flex items-center justify-center overflow-hidden">
+                      <img 
+                        :src="paymentMethodImg" 
+                        alt="Bandeira" 
+                        class="h-full w-full object-contain"
+                      />
                     </div>
                   </div>
                 </div>
 
                 <div class="col-span-2">
                   <label class="text-xs text-gray-500 uppercase font-bold ml-1">Nome no Cartão</label>
-                  <input v-model="cardForm.cardholderName" type="text" placeholder="COMO NO CARTÃO" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon uppercase">
+                  <input v-model="cardForm.cardholderName" type="text" placeholder="COMO ESTÁ NO CARTÃO" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon uppercase">
                 </div>
 
                 <div>
@@ -273,7 +304,7 @@ async function criarPedido() {
                 </div>
 
                 <div class="col-span-2">
-                  <label class="text-xs text-gray-500 uppercase font-bold ml-1">Parcelas</label>
+                  <label class="text-xs text-gray-500 uppercase font-bold ml-1">Parcelas (Max 6x)</label>
                   <select v-model="selectedInstallment" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon">
                     <option v-for="inst in installmentsList" :key="inst.installments" :value="inst.installments">
                       {{ inst.recommended_message }}
@@ -283,8 +314,8 @@ async function criarPedido() {
                 </div>
 
                 <div class="col-span-2">
-                   <label class="text-xs text-gray-500 uppercase font-bold ml-1">CPF do Titular</label>
-                   <input v-model="cardForm.identificationNumber" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon">
+                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">CPF do Titular</label>
+                    <input v-model="cardForm.identificationNumber" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon">
                 </div>
 
               </div>
