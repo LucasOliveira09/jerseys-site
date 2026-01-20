@@ -135,8 +135,6 @@ function resetarEstados() {
   novaAvaliacao.value = { rating: 5, comment: '' }
 }
 
-// 🔴 ALTERAÇÃO AQUI: Recebe 'categoria' e filtra
-// 🔴 ALTERAÇÃO: Lógica de Prioridade (Mesma Liga Primeiro)
 async function buscarRelacionados(liga, termoNome, categoria, idAtual) {
   const { data } = await supabase
     .from('produtos')
@@ -224,11 +222,22 @@ const listaTamanhos = computed(() => {
 })
 
 const precoFinal = computed(() => {
-  let total = 0
-  if (versaoSelecionada.value === 'jogador') total += 179.90
-  else total += 139.90
+  
+  if (!produto.value) return 0
+
+  
+  let total = Number(produto.value.price_sale) > 0 
+    ? Number(produto.value.price_sale) 
+    : Number(produto.value.price)
+
+  if (versaoSelecionada.value === 'jogador') {
+    total += 40.00 
+  }
+
   if (querPersonalizar.value) total += 17.00
+  
   if (patchSelecionado.value && patchSelecionado.value !== 'Nenhum') total += 6.00
+
   return total
 })
 
