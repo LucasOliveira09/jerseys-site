@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
 import { supabase } from '../supabase'
-import Swal from 'sweetalert2' // Importação do SweetAlert2
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const cart = useCartStore()
@@ -32,7 +32,7 @@ const paymentMethodImg = ref(null)
 
 let mpInstance = null 
 
-// --- CÁLCULOS BASE ---
+// --- CÁLCULOS VISUAIS (Apenas para o cliente ver) ---
 const subtotal = computed(() => cart.itens.reduce((acc, item) => acc + (item.price_sale * item.quantidade), 0))
 const valorFrete = computed(() => {
   const qtd = cart.quantidade
@@ -43,39 +43,34 @@ const valorFrete = computed(() => {
 })
 const totalBase = computed(() => subtotal.value + valorFrete.value)
 
-// --- CÁLCULO TOTAL FINAL ---
-const totalGeral = computed(() => {
+// Total estimado para exibir na tela (O backend recalcula isso para segurança)
+const totalGeralVisual = computed(() => {
   if (paymentMethod.value === 'pix') return totalBase.value * 0.98
   
   if (paymentMethod.value === 'credit_card' && selectedInstallment.value) {
     return selectedInstallment.value.total_amount
   }
-  
   return totalBase.value 
 })
 
 const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-// --- HELPER PARA ALERTAS (PADRÃO DARK) ---
 const showAlert = (title, text, icon = 'info') => {
   return Swal.fire({
-    title: title,
-    text: text,
-    icon: icon,
-    background: '#151515',
-    color: '#fff',
-    confirmButtonColor: '#00ffc2',
-    confirmButtonText: 'OK'
+    title: title, text: text, icon: icon,
+    background: '#151515', color: '#fff',
+    confirmButtonColor: '#00ffc2', confirmButtonText: 'OK'
   })
 }
 
-// --- CALCULADORA DE JUROS PERSONALIZADA ---
+// --- SIMULADOR DE PARCELAS (Visual) ---
 const calcularParcelasPersonalizadas = (valorBase) => {
   const opcoes = []
   for (let i = 1; i <= 6; i++) {
     let taxa = 0
     let textoJuros = 'sem juros'
 
+    // Mesma lógica do backend para o cliente ver o valor real
     if (i === 3) taxa = 0.0579 
     if (i === 4) taxa = 0.0799 
     if (i === 5) taxa = 0.0819 
@@ -102,7 +97,7 @@ const loadMercadoPagoScript = () => {
   return new Promise((resolve) => {
     if (window.MercadoPago) { resolve(); return }
     const script = document.createElement('script')
-    script.src = 'https://sdk.mercadopago.com/js/v2'
+    script.src = 'https://sdk.mercadopago.com/js/v2' // Use URL oficial
     script.onload = () => resolve()
     document.head.appendChild(script)
   })
@@ -121,17 +116,15 @@ onMounted(async () => {
   if (profile.value.cpf) cardForm.value.identificationNumber = profile.value.cpf
 
   await loadMercadoPagoScript()
+  // Use a chave pública do .env
   const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY
-  if (!publicKey) { 
-    console.error("Falta VITE_MP_PUBLIC_KEY"); 
-    return 
-  }
+  if (!publicKey) { console.error("Falta VITE_MP_PUBLIC_KEY"); return }
   
   try { mpInstance = new window.MercadoPago(publicKey, { locale: 'pt-BR' }) } catch (e) {}
   loading.value = false
 })
 
-// --- DETECÇÃO DO CARTÃO ---
+// --- LÓGICA DO CARTÃO ---
 const handleCardNumberChange = async () => {
   let num = cardForm.value.cardNumber.replace(/\D/g, '')
   cardForm.value.cardNumber = num.replace(/(\d{4})/g, '$1 ').trim().slice(0, 19)
@@ -152,9 +145,7 @@ const handleCardNumberChange = async () => {
       }
     } catch (e) { console.warn(e) }
   } else if (num.length < 6) {
-    paymentMethodId.value = null
-    paymentMethodImg.value = null
-    installmentsList.value = []
+    paymentMethodId.value = null; paymentMethodImg.value = null; installmentsList.value = []
   }
 }
 
@@ -169,42 +160,25 @@ const handleExpiryChange = (e) => {
   }
 }
 
+// --- FUNÇÃO DE PAGAMENTO BLINDADA ---
 async function criarPedido() {
-  // Validação de Endereço com SweetAlert
+  // 1. Validações Básicas
   if (!profile.value?.address || !profile.value?.number || !profile.value?.cep) {
     Swal.fire({
-      title: 'Endereço Incompleto',
-      text: 'Precisamos do seu endereço completo para entrega.',
-      icon: 'warning',
-      background: '#151515',
-      color: '#fff',
-      confirmButtonText: 'Completar Perfil',
-      confirmButtonColor: '#00ffc2'
-    }).then(() => {
-      router.push('/perfil')
-    })
+      title: 'Endereço Incompleto', text: 'Precisamos do seu endereço completo.', icon: 'warning',
+      background: '#151515', color: '#fff', confirmButtonText: 'Completar', confirmButtonColor: '#00ffc2'
+    }).then(() => router.push('/perfil'))
     return
   }
 
-  // Validação de CPF com Input do SweetAlert
   if (!profile.value.cpf) {
      const { value: cpfDigitado } = await Swal.fire({
-       title: 'CPF Obrigatório',
-       text: 'Informe seu CPF para emissão da nota e segurança do pagamento.',
-       input: 'text',
-       inputPlaceholder: '000.000.000-00',
-       background: '#151515',
-       color: '#fff',
-       confirmButtonColor: '#00ffc2',
-       showCancelButton: true,
-       cancelButtonText: 'Cancelar',
-       inputValidator: (value) => {
-         if (!value) return 'Você precisa digitar o CPF!'
-       }
+       title: 'CPF Obrigatório', text: 'Informe seu CPF para Nota Fiscal.', input: 'text',
+       inputPlaceholder: '000.000.000-00', background: '#151515', color: '#fff',
+       confirmButtonColor: '#00ffc2', showCancelButton: true,
+       inputValidator: (v) => !v && 'CPF é obrigatório!'
      })
-
-     if(!cpfDigitado) return // Se cancelar
-
+     if(!cpfDigitado) return 
      await supabase.from('profiles').update({ cpf: cpfDigitado }).eq('id', user.value.id)
      profile.value.cpf = cpfDigitado
      cardForm.value.identificationNumber = cpfDigitado
@@ -213,17 +187,11 @@ async function criarPedido() {
   processing.value = true
 
   try {
-    let mpPayload = {
-      items: cart.itens,
-      user_id: user.value.id,
-      customer_email: user.value.email,
-      customer_cpf: profile.value.cpf,
-      shipping_cost: valorFrete.value,
-      method: paymentMethod.value
-    }
+    let cardTokenId = null
 
+    // 2. Tokenização do Cartão (Única parte sensível no Front)
     if (paymentMethod.value === 'credit_card') {
-      if (!mpInstance) throw new Error("Sistema de pagamento indisponível no momento.")
+      if (!mpInstance) throw new Error("Sistema de pagamento indisponível.")
       
       const tokenResponse = await mpInstance.createCardToken({
         cardNumber: cardForm.value.cardNumber.replace(/\s/g, ''),
@@ -234,30 +202,55 @@ async function criarPedido() {
         identificationType: 'CPF',
         identificationNumber: cardForm.value.identificationNumber.replace(/\D/g, '')
       })
-
-      mpPayload.card_token = tokenResponse.id
-      mpPayload.installments = selectedInstallment.value.installments 
-      mpPayload.payment_method_id = paymentMethodId.value
-      mpPayload.issuer_id = issuerId.value
+      cardTokenId = tokenResponse.id
     }
 
-    const { data, error } = await supabase.functions.invoke('criar-pix', { body: mpPayload })
-    
-    if (error || (data && data.error)) {
-      throw new Error(data?.message || error?.message || 'Erro desconhecido no processamento.')
+    // 3. Preparar Itens para o Formato do Backend
+    // Traduz 'size' para 'tamanhoEscolhido'
+    const itemsBackend = cart.itens.map(item => ({
+       id: item.id,
+       name: item.name,
+       // Envia preço apenas como referência (o ideal seria backend buscar no banco)
+       price_sale: item.price_sale, 
+       quantidade: item.quantidade || item.quantity,
+       tamanhoEscolhido: item.size,
+       personalizacao: item.customization || null
+    }))
+
+    // 4. Payload SEGURO (Sem user_id, sem amount)
+    const payload = {
+      items: itemsBackend,
+      customer_cpf: profile.value.cpf,
+      shipping_cost: valorFrete.value,
+      method: paymentMethod.value,
+      
+      // Opcionais Cartão
+      card_token: cardTokenId,
+      installments: selectedInstallment.value?.installments,
+      payment_method_id: paymentMethodId.value,
+      issuer_id: issuerId.value
     }
 
-    // Sucesso - Limpa carrinho e redireciona
+    // 5. Chamar Edge Function
+    // Supabase injeta automaticamente o Authorization Bearer Token aqui
+    const { data, error } = await supabase.functions.invoke('processar-pagamento', {
+      body: payload
+    })
+
+    if (error) throw new Error(error.message)
+    if (data.error) throw new Error(data.message || 'Erro desconhecido')
+
+    // 6. Sucesso
     cart.limparCarrinho()
     router.push(`/pagamento/${data.order_id}`)
 
   } catch (err) {
     console.error(err)
-    // Mensagem de Erro Personalizada
     let msg = err.message
-    if (msg.includes('createCardToken')) msg = 'Verifique os dados digitados no cartão.'
+    if (msg.includes('token')) msg = 'Verifique os dados do cartão.'
+    if (msg.includes('installments')) msg = 'Selecione o parcelamento.'
     
-    showAlert('Ops!', msg, 'error')
+    showAlert('Erro no Pagamento', msg, 'error')
   } finally {
     processing.value = false
   }
@@ -286,16 +279,12 @@ async function criarPedido() {
            
            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm relative z-10">
              <div class="bg-[#1a1a1a] p-3 rounded border border-white/5">
-                <p class="text-gray-500 text-xs uppercase mb-1">Nome Completo</p>
+                <p class="text-gray-500 text-xs uppercase mb-1">Nome</p>
                 <p class="font-bold">{{ profile?.full_name || 'Não informado' }}</p>
              </div>
              <div class="bg-[#1a1a1a] p-3 rounded border border-white/5">
                 <p class="text-gray-500 text-xs uppercase mb-1">Email</p>
                 <p class="font-bold truncate">{{ user?.email }}</p>
-             </div>
-             <div class="bg-[#1a1a1a] p-3 rounded border border-white/5 md:col-span-2">
-                <p class="text-gray-500 text-xs uppercase mb-1">CPF (Nota Fiscal)</p>
-                <p class="font-bold">{{ profile?.cpf || 'Será solicitado no pagamento' }}</p>
              </div>
            </div>
         </section>
@@ -305,9 +294,9 @@ async function criarPedido() {
            <div class="flex justify-between items-start mb-4 relative z-10">
              <h2 class="text-xl font-bold uppercase flex items-center gap-2">
                <span class="bg-atk-neon text-atk-dark w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
-               Endereço de Entrega
+               Endereço
              </h2>
-             <button @click="router.push('/perfil')" class="text-xs text-atk-neon hover:underline font-bold uppercase">Editar Endereço</button>
+             <button @click="router.push('/perfil')" class="text-xs text-atk-neon hover:underline font-bold uppercase">Editar</button>
            </div>
 
            <div v-if="profile?.address && profile?.number" class="relative z-10 space-y-2 text-sm">
@@ -337,24 +326,22 @@ async function criarPedido() {
               <div class="flex-grow flex justify-between items-center">
                   <div>
                     <span class="font-bold text-lg block">PIX (Aprovação Imediata)</span>
-                    <span class="text-xs text-gray-400">Pague com QR Code ou Copia e Cola</span>
+                    <span class="text-xs text-gray-400">Pague com QR Code</span>
                   </div>
                   <span class="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded font-bold">2% OFF</span>
               </div>
-            </label>
+             </label>
 
-            <label class="cursor-pointer border p-4 rounded-lg flex flex-col gap-4 transition-all"
+             <label class="cursor-pointer border p-4 rounded-lg flex flex-col gap-4 transition-all"
                    :class="paymentMethod === 'credit_card' ? 'border-atk-neon bg-atk-neon/5 ring-1 ring-atk-neon' : 'border-white/10 hover:border-white/30'">
               <div class="flex items-center gap-4">
                 <input type="radio" v-model="paymentMethod" value="credit_card" class="accent-atk-neon w-5 h-5">
-                <div>
-                  <span class="font-bold text-lg">Cartão de Crédito</span>
-                </div>
+                <div><span class="font-bold text-lg">Cartão de Crédito</span></div>
               </div>
 
               <div v-if="paymentMethod === 'credit_card'" class="grid grid-cols-2 gap-4 mt-2 pl-9 animate-fade-in">
                  <div class="col-span-2 relative">
-                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">Número do Cartão</label>
+                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">Número</label>
                     <input v-model="cardForm.cardNumber" @input="handleCardNumberChange" type="text" placeholder="0000 0000 0000 0000" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon transition pr-14">
                     <div v-if="paymentMethodImg" class="absolute right-2 top-6 bg-white rounded p-1 h-8 w-12 flex items-center justify-center">
                       <img :src="paymentMethodImg" class="h-full w-full object-contain" />
@@ -362,7 +349,7 @@ async function criarPedido() {
                  </div>
                  
                  <div class="col-span-2">
-                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">Nome Impresso</label>
+                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">Nome no Cartão</label>
                     <input v-model="cardForm.cardholderName" type="text" placeholder="COMO NO CARTÃO" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon uppercase transition">
                  </div>
                  
@@ -377,7 +364,7 @@ async function criarPedido() {
                  </div>
 
                  <div class="col-span-2">
-                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">Parcelamento</label>
+                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">Parcelas</label>
                     <select v-model="selectedInstallment" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon transition cursor-pointer">
                       <option v-for="inst in installmentsList" :key="inst.installments" :value="inst">
                         {{ inst.recommended_message }}
@@ -387,35 +374,34 @@ async function criarPedido() {
                  </div>
 
                  <div class="col-span-2">
-                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">CPF do Titular do Cartão</label>
+                    <label class="text-xs text-gray-500 uppercase font-bold ml-1">CPF do Titular</label>
                     <input v-model="cardForm.identificationNumber" type="text" class="w-full bg-black border border-white/20 rounded p-3 text-white outline-none focus:border-atk-neon transition">
                  </div>
               </div>
-            </label>
+             </label>
           </div>
         </section>
       </div>
 
       <div class="lg:col-span-5">
         <div class="bg-[#1a1a1a] p-6 rounded-xl border border-white/10 sticky top-10">
-          <h2 class="font-bold text-lg uppercase mb-4 border-b border-white/10 pb-2">Resumo do Pedido</h2>
-          <div class="space-y-2 mb-6">
-             <div class="flex justify-between text-gray-400"><span>Subtotal ({{ cart.quantidade }} itens)</span> <span>{{ formatMoney(subtotal) }}</span></div>
+          <h2 class="font-bold text-lg uppercase mb-4 border-b border-white/10 pb-2">Resumo</h2>
+          <div class="space-y-2 mb-6 text-sm">
+             <div class="flex justify-between text-gray-400"><span>Itens ({{ cart.quantidade }})</span> <span>{{ formatMoney(subtotal) }}</span></div>
              <div class="flex justify-between text-gray-400"><span>Frete</span> <span>{{ valorFrete===0?'GRÁTIS':formatMoney(valorFrete) }}</span></div>
              
              <div v-if="paymentMethod==='pix'" class="flex justify-between text-green-500 font-bold">
-               <span>Desconto PIX (2%)</span> <span>- {{ formatMoney((subtotal+valorFrete)*0.02) }}</span>
+               <span>Desconto PIX</span> <span>- {{ formatMoney((subtotal+valorFrete)*0.02) }}</span>
              </div>
 
              <div v-if="paymentMethod==='credit_card' && selectedInstallment && selectedInstallment.installment_rate > 0" class="flex justify-between text-yellow-500 font-bold">
-               <span>Juros ({{ (selectedInstallment.installment_rate).toFixed(2) }}%)</span> 
-               <span>+ {{ formatMoney(selectedInstallment.total_amount - totalBase) }}</span>
+               <span>Juros</span> <span>+ {{ formatMoney(selectedInstallment.total_amount - totalBase) }}</span>
              </div>
           </div>
           
           <div class="flex justify-between items-end mb-6 border-t border-white/10 pt-4">
-            <span class="font-bold text-lg">Total a Pagar</span>
-            <span class="text-3xl font-extrabold text-atk-neon">{{ formatMoney(totalGeral) }}</span>
+            <span class="font-bold text-lg">Total</span>
+            <span class="text-3xl font-extrabold text-atk-neon">{{ formatMoney(totalGeralVisual) }}</span>
           </div>
           
           <button @click="criarPedido" :disabled="processing" class="w-full bg-green-500 hover:bg-green-400 text-white font-extrabold py-4 rounded-lg uppercase transition flex justify-center items-center gap-2 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(34,197,94,0.3)]">
@@ -424,8 +410,7 @@ async function criarPedido() {
           </button>
 
           <p class="text-center text-[10px] text-gray-500 mt-4 flex justify-center items-center gap-2">
-            🔒 Ambiente Seguro • 
-            <span>Compra Garantida</span>
+            🔒 Ambiente Seguro SSL
           </p>
         </div>
       </div>
