@@ -233,7 +233,7 @@ async function criarPedido() {
 
     // 5. Chamar Edge Function
     // Supabase injeta automaticamente o Authorization Bearer Token aqui
-    const { data, error } = await supabase.functions.invoke('processar-pagamento', {
+    const { data, error } = await supabase.functions.invoke('criar-pix', {
       body: payload
     })
 
