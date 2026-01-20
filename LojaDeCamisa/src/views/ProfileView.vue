@@ -10,7 +10,7 @@ const orders = ref([])
 const loading = ref(true)
 const saving = ref(false)
 
-// 🔴 ALTERAÇÃO 1: Começa na aba 'dados'
+// Começa na aba 'dados'
 const activeTab = ref('dados')
 
 // Dados do Formulário
@@ -63,9 +63,25 @@ async function carregarDados() {
   if (!currentUser) { router.push('/login'); return }
   user.value = currentUser
 
-  // 1. Carrega Perfil
+  // 1. Carrega Perfil do Banco
   const { data: profileData } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
-  if (profileData) formPerfil.value = { ...profileData, email: currentUser.email }
+  
+  // 🔹 NOVA LÓGICA: Pega nome do Google/Metadados
+  // O Google geralmente manda como 'full_name', 'name' ou 'picture' dentro de user_metadata
+  const nomeGoogle = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || ''
+
+  if (profileData) {
+    formPerfil.value = { ...profileData, email: currentUser.email }
+    
+    // Se o nome estiver vazio no banco, preenche com o do Google visualmente
+    if (!formPerfil.value.full_name && nomeGoogle) {
+      formPerfil.value.full_name = nomeGoogle.toUpperCase()
+    }
+  } else {
+    // Caso raro onde não existe perfil (fallback)
+    formPerfil.value.email = currentUser.email
+    formPerfil.value.full_name = nomeGoogle.toUpperCase()
+  }
 
   // 2. Carrega Pedidos
   const { data: ordersData, error } = await supabase
@@ -122,7 +138,7 @@ async function salvarPerfil() {
   try {
     const updates = {
       id: user.value.id,
-      full_name: formPerfil.value.full_name,
+      full_name: formPerfil.value.full_name, // Salva o nome (incluindo o do Google se foi preenchido)
       cpf: formPerfil.value.cpf ? formPerfil.value.cpf.replace(/\D/g, '') : null,
       phone: formPerfil.value.phone,
       cep: formPerfil.value.cep,
@@ -181,7 +197,7 @@ function mascaraTelefone(e) {
   formPerfil.value.phone = v
 }
 
-// 🔴 ALTERAÇÃO 2: Logout com Confirmação
+// Logout com Confirmação
 async function handleLogout() {
   const result = await Swal.fire({
     title: 'Sair da conta?',
@@ -229,8 +245,9 @@ const statusClass = (status) => {
       
       <div class="md:col-span-1 space-y-6">
         <div class="bg-[#151515] p-6 rounded-xl border border-white/10 text-center">
-          <div class="w-20 h-20 bg-atk-neon text-atk-dark rounded-full flex items-center justify-center text-3xl font-extrabold mx-auto mb-4 shadow-[0_0_20px_rgba(0,255,194,0.3)]">
-            {{ formPerfil.full_name ? formPerfil.full_name[0] : user.email[0].toUpperCase() }}
+          <div class="w-20 h-20 bg-atk-neon text-atk-dark rounded-full flex items-center justify-center text-3xl font-extrabold mx-auto mb-4 shadow-[0_0_20px_rgba(0,255,194,0.3)] overflow-hidden">
+             <img v-if="user.user_metadata?.avatar_url || user.user_metadata?.picture" :src="user.user_metadata.avatar_url || user.user_metadata.picture" class="w-full h-full object-cover">
+             <span v-else>{{ formPerfil.full_name ? formPerfil.full_name[0] : user.email[0].toUpperCase() }}</span>
           </div>
           <h2 class="font-bold text-lg truncate">{{ formPerfil.full_name || 'Torcedor' }}</h2>
           <p class="text-xs text-gray-500 mb-3">{{ user.email }}</p>
@@ -275,7 +292,7 @@ const statusClass = (status) => {
           <h2 class="text-2xl font-bold uppercase mb-2">Editar Perfil</h2>
           <form @submit.prevent="salvarPerfil" class="bg-[#1a1a1a] p-6 md:p-8 rounded-xl border border-white/10 space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Nome</label><input v-model="formPerfil.full_name" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
+                 <div><label class="block text-xs text-gray-500 uppercase mb-1">Nome</label><input v-model="formPerfil.full_name" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none uppercase" /></div>
                  <div><label class="block text-xs text-gray-500 uppercase mb-1">CPF</label><input :value="formPerfil.cpf" @input="mascaraCPF" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
                  <div><label class="block text-xs text-gray-500 uppercase mb-1">Telefone</label><input :value="formPerfil.phone" @input="mascaraTelefone" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
                  <div><label class="block text-xs text-gray-500 uppercase mb-1">CEP</label><input v-model="formPerfil.cep" @blur="buscarCep" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
@@ -359,18 +376,18 @@ const statusClass = (status) => {
 
         <div class="bg-[#202020] p-4 border-t border-white/5 space-y-2">
             <div class="flex justify-between text-gray-400 text-sm">
-                <span>Frete</span>
-                <span>{{ formatMoney(selectedOrder.shipping_cost || 0) }}</span>
+               <span>Frete</span>
+               <span>{{ formatMoney(selectedOrder.shipping_cost || 0) }}</span>
             </div>
             <div class="flex justify-between text-white font-bold text-lg border-t border-white/10 pt-2">
-                <span>Total</span>
-                <span class="text-atk-neon">{{ formatMoney(selectedOrder.total) }}</span>
+               <span>Total</span>
+               <span class="text-atk-neon">{{ formatMoney(selectedOrder.total) }}</span>
             </div>
             
             <button v-if="selectedOrder.status === 'Pendente'" 
                     @click="irParaPagamento(selectedOrder.id)" 
                     class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded uppercase mt-4 transition">
-                Realizar Pagamento Agora
+               Realizar Pagamento Agora
             </button>
         </div>
       </div>
