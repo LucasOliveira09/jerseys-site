@@ -102,7 +102,12 @@ async function handleAuth() {
         </div>
 
         <div>
-          <label class="text-xs uppercase font-bold text-gray-500 ml-1">Senha</label>
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-xs uppercase font-bold text-gray-500 ml-1">Senha</label>
+            <router-link to="/recuperar-senha" class="text-[10px] text-atk-neon font-bold uppercase hover:underline hover:text-white transition">
+              Esqueceu a senha?
+            </router-link>
+          </div>
           <input v-model="form.password" type="password" required class="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none transition" placeholder="••••••••" />
         </div>
 
@@ -111,7 +116,7 @@ async function handleAuth() {
           {{ isLogin ? 'Entrar' : 'Cadastrar' }}
         </button>
       </form>
-
+      
       <div class="mt-6 text-center text-sm text-gray-400">
         {{ isLogin ? 'Ainda não tem conta?' : 'Já tem uma conta?' }}
         <button @click="toggleMode" class="text-atk-neon font-bold hover:underline ml-1">
