@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.90.1",
     "pinia": "^3.0.4",
     "qrcode": "^1.5.4",
+    "sweetalert2": "^11.26.17",
     "vue": "^3.5.26",
     "vue-router": "^4.6.4"
   },

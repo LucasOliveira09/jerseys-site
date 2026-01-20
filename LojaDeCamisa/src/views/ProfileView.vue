@@ -2,13 +2,16 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../supabase'
 import { useRouter } from 'vue-router'
+import Swal from 'sweetalert2' // Importando SweetAlert2
 
 const router = useRouter()
 const user = ref(null)
 const orders = ref([])
 const loading = ref(true)
 const saving = ref(false)
-const activeTab = ref('dashboard')
+
+// 🔴 ALTERAÇÃO 1: Começa na aba 'dados'
+const activeTab = ref('dados')
 
 // Dados do Formulário
 const formPerfil = ref({
@@ -40,6 +43,19 @@ onMounted(async () => {
   await carregarDados()
 })
 
+// --- HELPER PARA ALERTAS (PADRÃO DARK) ---
+const showAlert = (title, text, icon = 'success') => {
+  return Swal.fire({
+    title: title,
+    text: text,
+    icon: icon,
+    background: '#151515',
+    color: '#fff',
+    confirmButtonColor: '#00ffc2',
+    confirmButtonText: 'OK'
+  })
+}
+
 async function carregarDados() {
   loading.value = true
   
@@ -51,33 +67,33 @@ async function carregarDados() {
   const { data: profileData } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
   if (profileData) formPerfil.value = { ...profileData, email: currentUser.email }
 
-  // 2. Carrega Pedidos (CORREÇÃO AQUI NA QUERY)
-  // Nota: Se sua tabela de produtos chama 'products', mude 'produtos' para 'products' abaixo
+  // 2. Carrega Pedidos
   const { data: ordersData, error } = await supabase
     .from('orders')
     .select(`
       id, created_at, total, status, shipping_cost,
       order_items (
         id, quantity, price, size, customization,
-        product:products ( name, image_cover ) 
+        produtos ( name, image_cover ) 
       )
     `)
     .eq('user_id', currentUser.id)
     .order('created_at', { ascending: false })
   
-  // Ajuste técnico: Se você usou o nome 'produtos' na tabela, mude 'product:products' para 'produtos'
+  if (error) {
+    console.error("Erro ao buscar pedidos:", error)
+  }
   
-  if (error) console.error("Erro ao buscar pedidos:", error)
   orders.value = ordersData || []
   loading.value = false
 }
 
-// --- AÇÃO DE PAGAR (NOVO) ---
+// --- AÇÃO DE PAGAR ---
 function irParaPagamento(orderId) {
   router.push(`/pagamento/${orderId}`)
 }
 
-// --- LÓGICA DE CPF E MÁSCARAS (Mantido igual) ---
+// --- LÓGICA DE CPF E MÁSCARAS ---
 function validarCPF(cpf) {
   cpf = cpf.replace(/[^\d]+/g, '')
   if (cpf === '') return false
@@ -96,9 +112,12 @@ function validarCPF(cpf) {
 }
 
 async function salvarPerfil() {
+  // Validação CPF com SweetAlert
   if (formPerfil.value.cpf && !validarCPF(formPerfil.value.cpf)) {
-    alert('CPF Inválido!'); return
+    showAlert('CPF Inválido', 'Verifique os números digitados.', 'warning')
+    return
   }
+
   saving.value = true
   try {
     const updates = {
@@ -117,9 +136,12 @@ async function salvarPerfil() {
     }
     const { error } = await supabase.from('profiles').upsert(updates)
     if (error) throw error
-    alert('Dados atualizados! ✅')
+    
+    // Sucesso com SweetAlert
+    showAlert('Sucesso!', 'Seus dados foram atualizados.', 'success')
+
   } catch (error) {
-    alert('Erro: ' + error.message)
+    showAlert('Erro', error.message, 'error')
   } finally {
     saving.value = false
   }
@@ -159,9 +181,25 @@ function mascaraTelefone(e) {
   formPerfil.value.phone = v
 }
 
+// 🔴 ALTERAÇÃO 2: Logout com Confirmação
 async function handleLogout() {
-  await supabase.auth.signOut()
-  router.push('/login')
+  const result = await Swal.fire({
+    title: 'Sair da conta?',
+    text: "Você precisará fazer login novamente.",
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#d33',
+    cancelButtonColor: '#3085d6',
+    confirmButtonText: 'Sair',
+    cancelButtonText: 'Cancelar',
+    background: '#151515',
+    color: '#fff'
+  })
+
+  if (result.isConfirmed) {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 }
 
 function abrirDetalhes(order) {
@@ -174,7 +212,7 @@ const formatMoney = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency
 const statusClass = (status) => {
   if (status === 'Pendente') return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20'
   if (status === 'Pago') return 'text-blue-500 bg-blue-500/10 border-blue-500/20'
-  if (status === 'Cancelado') return 'text-red-500 bg-red-500/10 border-red-500/20'
+  if (status === 'Cancelado' || status === 'Falha') return 'text-red-500 bg-red-500/10 border-red-500/20'
   if (status === 'Entregue') return 'text-green-500 bg-green-500/10 border-green-500/20'
   return 'text-gray-500'
 }
@@ -202,10 +240,18 @@ const statusClass = (status) => {
         </div>
 
         <nav class="bg-[#151515] rounded-xl border border-white/10 overflow-hidden">
-          <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">📊 Visão Geral</button>
-          <button @click="activeTab = 'dados'" :class="activeTab === 'dados' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">👤 Meus Dados</button>
-          <button @click="activeTab = 'pedidos'" :class="activeTab === 'pedidos' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">📦 Meus Pedidos <span class="bg-atk-neon text-atk-dark text-[10px] px-1.5 rounded-full ml-auto">{{ orders.length }}</span></button>
-          <button @click="handleLogout" class="w-full text-left px-6 py-4 font-bold text-sm text-red-500 hover:bg-red-500/10 transition flex items-center gap-3 border-t border-white/5">🚪 Sair</button>
+          <button @click="activeTab = 'dados'" :class="activeTab === 'dados' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
+            👤 Meus Dados
+          </button>
+          <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
+            📊 Visão Geral
+          </button>
+          <button @click="activeTab = 'pedidos'" :class="activeTab === 'pedidos' ? 'bg-white/5 text-atk-neon border-l-4 border-atk-neon' : 'text-gray-400 hover:text-white'" class="w-full text-left px-6 py-4 font-bold text-sm transition flex items-center gap-3">
+            📦 Meus Pedidos <span class="bg-atk-neon text-atk-dark text-[10px] px-1.5 rounded-full ml-auto">{{ orders.length }}</span>
+          </button>
+          <button @click="handleLogout" class="w-full text-left px-6 py-4 font-bold text-sm text-red-500 hover:bg-red-500/10 transition flex items-center gap-3 border-t border-white/5">
+            🚪 Sair
+          </button>
         </nav>
       </div>
 
@@ -239,7 +285,9 @@ const statusClass = (status) => {
                  <div><label class="block text-xs text-gray-500 uppercase mb-1">Cidade</label><input v-model="formPerfil.city" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none" /></div>
                  <div><label class="block text-xs text-gray-500 uppercase mb-1">UF</label><input v-model="formPerfil.state" class="w-full bg-black border border-white/20 rounded p-3 text-white focus:border-atk-neon outline-none uppercase" /></div>
             </div>
-            <button type="submit" :disabled="saving" class="bg-atk-neon text-atk-dark font-extrabold uppercase px-8 py-3 rounded hover:bg-white transition w-full">{{ saving ? 'Salvando...' : 'Salvar Alterações' }}</button>
+            <button type="submit" :disabled="saving" class="bg-atk-neon text-atk-dark font-extrabold uppercase px-8 py-3 rounded hover:bg-white transition w-full">
+              {{ saving ? 'Salvando...' : 'Salvar Alterações' }}
+            </button>
           </form>
         </div>
 
@@ -267,7 +315,7 @@ const statusClass = (status) => {
             </div>
             <div class="p-4 text-xs text-gray-500 flex justify-between">
                <span>📦 {{ order.order_items.length }} itens no pacote.</span>
-               <span class="text-gray-600">ID: #{{ order.id.slice(0,8) }}</span>
+               <span class="text-gray-600">ID: #{{ String(order.id).slice(0,8) }}</span>
             </div>
           </div>
         </div>
@@ -288,13 +336,13 @@ const statusClass = (status) => {
         <div class="p-4 overflow-y-auto custom-scrollbar space-y-3 flex-grow">
           <div v-for="item in selectedOrder.order_items" :key="item.id" class="flex gap-4 bg-black/20 p-3 rounded border border-white/5 items-center">
             <div class="w-16 h-16 bg-white/5 rounded flex items-center justify-center flex-shrink-0 overflow-hidden border border-white/10">
-               <img v-if="item.product?.image_cover || item.produtos?.image_cover" 
-                    :src="item.product?.image_cover || item.produtos?.image_cover" 
+               <img v-if="item.produtos?.image_cover" 
+                    :src="item.produtos.image_cover" 
                     class="w-full h-full object-contain p-1">
                <span v-else class="text-xs text-gray-500">Sem foto</span>
             </div>
             <div class="flex-grow">
-              <p class="font-bold text-sm text-white">{{ item.product?.name || item.produtos?.name || 'Produto Removido' }}</p>
+              <p class="font-bold text-sm text-white">{{ item.produtos?.name || 'Produto Removido' }}</p>
               <div class="flex flex-wrap gap-3 text-xs text-gray-400 mt-1">
                 <span class="bg-white/5 px-2 py-0.5 rounded">Tam: <strong class="text-white">{{ item.size }}</strong></span>
                 <span class="bg-white/5 px-2 py-0.5 rounded">Qtd: <strong class="text-white">{{ item.quantity }}</strong></span>

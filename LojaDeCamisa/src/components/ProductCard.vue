@@ -1,8 +1,37 @@
 <script setup>
 import { RouterLink } from 'vue-router'
+import { computed } from 'vue'
 
-defineProps({
+const props = defineProps({
   product: Object
+})
+
+// Lógica do Preço Riscado (DE: R$ ...)
+const precoOriginal = computed(() => {
+  if (!props.product) return 0
+  
+  // Normaliza textos para facilitar a busca (tudo minúsculo)
+  const categoria = props.product.category ? props.product.category.toLowerCase() : ''
+  const nome = props.product.name ? props.product.name.toLowerCase() : ''
+
+  // 1. Regra para KIDS
+  if (categoria.includes('kids') || categoria.includes('infantil')) {
+    return 179.90
+  }
+
+  // 2. Regra para RETRÔ ou PLAYER (Jogador)
+  if (
+    categoria.includes('retro') || 
+    categoria.includes('retrô') || 
+    nome.includes('jogador') || 
+    nome.includes('player')
+  ) {
+    return 199.90
+  }
+
+  // 3. Regra Padrão (Torcedor Comum)
+  // Define um preço base para que o desconto pareça real (ex: De 189 por 139)
+  return 189.90
 })
 </script>
 
@@ -32,10 +61,10 @@ defineProps({
       <div class="mt-auto space-y-4">
         <div class="flex items-center justify-center gap-3 font-bold">
           <span class="text-gray-500 line-through text-sm">
-            R$ {{ (product.price_cost + 50).toFixed(2) }}
+            R$ {{ precoOriginal.toFixed(2).replace('.', ',') }}
           </span>
           <span class="text-atk-neon text-2xl">
-            R$ {{ product.price_sale.toFixed(2) }}
+            R$ {{ product.price_sale.toFixed(2).replace('.', ',') }}
           </span>
         </div>
 

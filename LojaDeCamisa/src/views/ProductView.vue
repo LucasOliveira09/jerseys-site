@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabase'
 import { useCartStore } from '../stores/cart'
 import ProductCard from '../components/ProductCard.vue'
+import Swal from 'sweetalert2' // Importando SweetAlert2
 
 const route = useRoute()
 const router = useRouter()
@@ -41,7 +42,21 @@ const freteCalculado = ref(null)
 const tamanhosPadrao = ['P', 'M', 'G', 'GG', 'XG']
 const patchesDisponiveis = ['Nenhum', 'Champions League', 'Libertadores', 'Brasileirão', 'Premier League', 'Mundial FIFA']
 
-// TABELAS DE MEDIDAS
+// --- HELPER PARA ALERTAS (PADRÃO DARK) ---
+const showAlert = (title, text, icon = 'info') => {
+  return Swal.fire({
+    title: title,
+    text: text,
+    icon: icon,
+    background: '#151515',
+    color: '#fff',
+    confirmButtonColor: '#00ffc2',
+    confirmButtonText: 'OK',
+    iconColor: icon === 'success' ? '#00ffc2' : undefined
+  })
+}
+
+// TABELAS DE MEDIDAS (MANTIDAS IGUAIS)
 const tabelasMedidas = {
   torcedor: {
     titulo: 'Versão Fan (Torcedor)',
@@ -129,11 +144,9 @@ async function carregarProduto() {
     erro.value = ''
     resetarEstados()
 
-    // 1. Usuário
     const { data: userData } = await supabase.auth.getUser()
     user.value = userData.user
 
-    // 2. Produto
     const { data, error } = await supabase
       .from('produtos') 
       .select('*')
@@ -144,8 +157,6 @@ async function carregarProduto() {
     produto.value = data
     imagemAtualIndex.value = 0
 
-    // 3. Reviews (Puxando com o nome do perfil)
-    console.log('Buscando reviews...')
     const { data: reviewsData, error: reviewsError } = await supabase
       .from('reviews')
       .select(`
@@ -161,7 +172,6 @@ async function carregarProduto() {
       reviews.value = reviewsData || []
     }
 
-    // 4. Relacionados
     if (produto.value) {
       const termoBusca = produto.value.name.split(' ')[0]
       buscarRelacionados(produto.value.league, termoBusca, produto.value.id)
@@ -207,7 +217,7 @@ async function enviarAvaliacao() {
   }
   
   if (!novaAvaliacao.value.comment.trim()) {
-    alert('Por favor, escreva um comentário.')
+    showAlert('Ops...', 'Por favor, escreva um comentário para enviar.', 'warning')
     return
   }
 
@@ -223,24 +233,20 @@ async function enviarAvaliacao() {
 
     if (error) throw error
 
-    // Atualiza a lista na tela sem precisar recarregar tudo
-    // (Opcional: recarregar do banco é mais seguro para pegar o nome do perfil corretamente)
     await carregarProduto() 
     
-    alert('Avaliação enviada com sucesso!')
+    showAlert('Sucesso!', 'Sua avaliação foi publicada.', 'success')
     novaAvaliacao.value.comment = ''
     novaAvaliacao.value.rating = 5
 
   } catch (err) {
     console.error(err)
-    alert('Erro ao enviar: ' + err.message)
+    showAlert('Erro', 'Não foi possível enviar a avaliação.', 'error')
   } finally {
     enviandoReview.value = false
   }
 }
 
-// ... (todasImagens, selecionarImagem, onScroll, listaTamanhos, precoFinal, formatarCep, calcularFrete, adicionarAoCarrinho)
-// MANTENHA AS FUNÇÕES ABAIXO IGUAIS AO SEU CÓDIGO ANTERIOR
 const todasImagens = computed(() => {
   if (!produto.value) return []
   const capa = produto.value.image_cover
@@ -255,6 +261,7 @@ const todasImagens = computed(() => {
   }
   return lista
 })
+
 function selecionarImagem(index) {
   imagemAtualIndex.value = index
   if (scrollContainer.value) {
@@ -262,6 +269,7 @@ function selecionarImagem(index) {
     scrollContainer.value.scrollTo({ left: largura * index, behavior: 'smooth' })
   }
 }
+
 function onScroll() {
   if (scrollContainer.value) {
     const scrollLeft = scrollContainer.value.scrollLeft
@@ -269,6 +277,7 @@ function onScroll() {
     imagemAtualIndex.value = Math.round(scrollLeft / largura)
   }
 }
+
 const listaTamanhos = computed(() => {
   if (!produto.value || !produto.value.sizes) return tamanhosPadrao
   try {
@@ -276,6 +285,7 @@ const listaTamanhos = computed(() => {
     return Array.isArray(parsed) ? parsed : tamanhosPadrao
   } catch (e) { return tamanhosPadrao }
 })
+
 const precoFinal = computed(() => {
   let total = 0
   if (versaoSelecionada.value === 'jogador') total += 179.90
@@ -284,13 +294,18 @@ const precoFinal = computed(() => {
   if (patchSelecionado.value && patchSelecionado.value !== 'Nenhum') total += 6.00
   return total
 })
+
 function formatarCep() {
   let v = cep.value.replace(/\D/g, "")
   if (v.length > 5) v = v.replace(/^(\d{5})(\d)/, "$1-$2")
   cep.value = v
 }
+
 function calcularFrete() {
-  if (cep.value.length < 9) { alert("Digite um CEP válido"); return }
+  if (cep.value.length < 9) { 
+    showAlert('CEP Inválido', 'Digite o CEP completo para calcular.', 'warning')
+    return 
+  }
   calculandoFrete.value = true
   freteCalculado.value = null
   const hoje = new Date()
@@ -305,9 +320,17 @@ function calcularFrete() {
     }
   }, 1000)
 }
+
 function adicionarAoCarrinho() {
-  if (!tamanhoSelecionado.value) return alert('Por favor, selecione um tamanho.')
-  if (querPersonalizar.value && (!nomePersonalizado.value || !numeroPersonalizado.value)) return alert('Por favor, preencha a personalização.')
+  // Validações com SweetAlert
+  if (!tamanhoSelecionado.value) {
+    return showAlert('Atenção', 'Selecione um tamanho antes de adicionar.', 'warning')
+  }
+  
+  if (querPersonalizar.value && (!nomePersonalizado.value || !numeroPersonalizado.value)) {
+    return showAlert('Personalização Incompleta', 'Preencha o Nome e Número da camisa.', 'warning')
+  }
+
   const itemParaCarrinho = {
     ...produto.value,
     price_sale: precoFinal.value,
@@ -315,9 +338,28 @@ function adicionarAoCarrinho() {
     patch: patchSelecionado.value !== 'Nenhum' ? patchSelecionado.value : null,
     personalizacao: querPersonalizar.value ? { nome: nomePersonalizado.value.toUpperCase(), numero: numeroPersonalizado.value } : null
   }
+  
   cart.adicionarAoCarrinho(itemParaCarrinho, tamanhoSelecionado.value)
-  alert(`Produto adicionado! Total: R$ ${precoFinal.value.toFixed(2)}`)
+  
+  // Confirmação Bonita (Ir pro carrinho ou continuar)
+  Swal.fire({
+    title: 'Adicionado ao Carrinho!',
+    text: `${produto.value.name} já está na sua sacola.`,
+    icon: 'success',
+    showCancelButton: true,
+    confirmButtonText: 'Ir para o Carrinho',
+    cancelButtonText: 'Continuar Comprando',
+    confirmButtonColor: '#00ffc2',
+    cancelButtonColor: '#333',
+    background: '#151515',
+    color: '#fff'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      router.push('/carrinho')
+    }
+  })
 }
+
 watch(() => route.params.slug, () => carregarProduto())
 onMounted(() => carregarProduto())
 </script>
@@ -342,16 +384,16 @@ onMounted(() => carregarProduto())
       <div class="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-10 mb-12">
         <div class="lg:col-span-7 space-y-4">
           <div class="relative group bg-[#1a1a1a] rounded-xl border border-white/5 aspect-square overflow-hidden">
-             <div ref="scrollContainer" @scroll="onScroll" class="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar">
-               <div v-for="(img, index) in todasImagens" :key="index" class="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-6">
-                 <img :src="img" :alt="produto.name" class="max-w-full max-h-full object-contain drop-shadow-2xl" />
-               </div>
-             </div>
-             <button v-if="imagemAtualIndex > 0" @click="selecionarImagem(imagemAtualIndex - 1)" class="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❮</button>
-             <button v-if="imagemAtualIndex < todasImagens.length - 1" @click="selecionarImagem(imagemAtualIndex + 1)" class="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❯</button>
-             <div class="absolute bottom-4 left-0 w-full flex justify-center gap-2 z-10">
-               <span v-for="(_, idx) in todasImagens" :key="idx" class="block w-2 h-2 rounded-full transition-all" :class="idx === imagemAtualIndex ? 'bg-atk-neon w-4' : 'bg-gray-500'"></span>
-             </div>
+              <div ref="scrollContainer" @scroll="onScroll" class="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar">
+                <div v-for="(img, index) in todasImagens" :key="index" class="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-6">
+                  <img :src="img" :alt="produto.name" class="max-w-full max-h-full object-contain drop-shadow-2xl" />
+                </div>
+              </div>
+              <button v-if="imagemAtualIndex > 0" @click="selecionarImagem(imagemAtualIndex - 1)" class="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❮</button>
+              <button v-if="imagemAtualIndex < todasImagens.length - 1" @click="selecionarImagem(imagemAtualIndex + 1)" class="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❯</button>
+              <div class="absolute bottom-4 left-0 w-full flex justify-center gap-2 z-10">
+                <span v-for="(_, idx) in todasImagens" :key="idx" class="block w-2 h-2 rounded-full transition-all" :class="idx === imagemAtualIndex ? 'bg-atk-neon w-4' : 'bg-gray-500'"></span>
+              </div>
           </div>
           <div v-if="todasImagens.length > 1" class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
             <button v-for="(img, index) in todasImagens" :key="index" @click="selecionarImagem(index)" class="w-20 h-20 flex-shrink-0 rounded-lg border-2 overflow-hidden p-1 bg-[#1a1a1a] transition-all" :class="imagemAtualIndex === index ? 'border-atk-neon opacity-100' : 'border-transparent opacity-60 hover:opacity-100'">
