@@ -2,133 +2,123 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '../supabase'
+import Swal from 'sweetalert2'
 
 const router = useRouter()
-const isLogin = ref(true) // Alterna entre Login e Cadastro
 const loading = ref(false)
-const errorMessage = ref('')
+const form = ref({ email: '', password: '' })
 
-const form = ref({
-  email: '',
-  password: '',
-  fullName: '' // Apenas para cadastro
-})
-
-const toggleMode = () => {
-  isLogin.value = !isLogin.value
-  errorMessage.value = ''
+const showAlert = (icon, title, text) => {
+  Swal.fire({ icon, title, text, background: '#151515', color: '#fff', confirmButtonColor: '#00ffc2' })
 }
 
-async function handleAuth() {
-  loading.value = true
-  errorMessage.value = ''
-
+// --- LOGIN GOOGLE ---
+const handleGoogleLogin = async () => {
   try {
-    if (isLogin.value) {
-      // --- LOGIN ---
-      const { error } = await supabase.auth.signInWithPassword({
-        email: form.value.email,
-        password: form.value.password
-      })
-      if (error) throw error
-      router.push('/') // Redireciona para Home ou Perfil
-    } else {
-      // --- CADASTRO ---
-      const { data, error } = await supabase.auth.signUp({
-        email: form.value.email,
-        password: form.value.password,
-        options: {
-          data: { full_name: form.value.fullName } // Salva o nome nos metadados
-        }
-      })
-      if (error) throw error
-      
-      // Cria o perfil na tabela 'profiles'
-      if (data.user) {
-        await supabase.from('profiles').insert({
-          id: data.user.id,
-          full_name: form.value.fullName,
-          email: form.value.email
-        })
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        // Redireciona de volta para o seu site após o login no Google
+        redirectTo: window.location.origin 
       }
-      alert('Cadastro realizado! Faça login.')
-      isLogin.value = true
-    }
+    })
+    if (error) throw error
   } catch (error) {
-    // Tradução básica de erros
-    if (error.message.includes('Invalid login')) errorMessage.value = 'E-mail ou senha incorretos.'
-    else if (error.message.includes('already registered')) errorMessage.value = 'E-mail já cadastrado.'
-    else if (error.message.includes('password')) errorMessage.value = 'A senha deve ter no mínimo 6 caracteres.'
-    else errorMessage.value = error.message
+    Swal.fire({
+      icon: 'error',
+      title: 'Erro no Google',
+      text: error.message,
+      background: '#151515', color: '#fff'
+    })
+  }
+}
+
+// --- LOGIN EMAIL/SENHA ---
+const handleLogin = async () => {
+  loading.value = true
+  try {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: form.value.email,
+      password: form.value.password
+    })
+
+    if (error) throw error
+
+    // Sucesso
+    router.push('/') 
+
+  } catch (error) {
+    let msg = error.message
+    if (msg.includes('Invalid login')) msg = 'E-mail ou senha incorretos.'
+    showAlert('error', 'Acesso Negado', msg)
   } finally {
     loading.value = false
   }
 }
+
+
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-atk-dark p-4 relative overflow-hidden">
+  <div class="min-h-screen flex items-center justify-center bg-[#0f0f0f] p-4 font-sans relative overflow-hidden">
     
-    <div class="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
-      <div class="absolute -top-20 -left-20 w-96 h-96 bg-atk-neon/20 rounded-full blur-[100px]"></div>
-      <div class="absolute bottom-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-[100px]"></div>
-    </div>
+    <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-[#00ffc2] opacity-5 rounded-full blur-[100px] pointer-events-none"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-blue-600 opacity-5 rounded-full blur-[100px] pointer-events-none"></div>
 
-    <div class="bg-[#151515] border border-white/10 p-8 rounded-2xl shadow-2xl w-full max-w-md z-10 relative backdrop-blur-sm">
+    <div class="bg-[#151515] border border-white/10 p-8 rounded-2xl shadow-2xl w-full max-w-md z-10 relative">
       
-      <div class="text-center mb-8">
-        <h1 class="text-3xl font-extrabold text-white uppercase tracking-tighter">
-          {{ isLogin ? 'Bem-vindo de volta' : 'Crie sua conta' }}
-        </h1>
-        <p class="text-gray-400 text-sm mt-2">
-          {{ isLogin ? 'Acesse seus pedidos e favoritos' : 'Junte-se ao time e garanta seu manto' }}
-        </p>
+      <div class="text-center mb-6">
+        <h1 class="text-3xl font-extrabold text-white uppercase tracking-tighter">Login</h1>
+        <p class="text-gray-400 text-sm mt-2">Bem-vindo de volta.</p>
       </div>
 
-      <div v-if="errorMessage" class="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded text-sm mb-4 text-center">
-        {{ errorMessage }}
+      <button 
+        @click="handleGoogleLogin" 
+        class="w-full bg-white text-black font-bold py-3 rounded-lg flex items-center justify-center gap-3 hover:bg-gray-200 transition mb-6 transform active:scale-[0.98]"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        <span>Entrar com Google</span>
+      </button>
+
+      <div class="relative mb-6 text-center">
+        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/10"></div></div>
+        <div class="relative bg-[#151515] px-4 text-xs text-gray-500 uppercase font-bold">Ou via E-mail</div>
       </div>
 
-      <form @submit.prevent="handleAuth" class="space-y-4">
+      <form @submit.prevent="handleLogin" class="space-y-4">
         
-        <div v-if="!isLogin" class="animate-fade-in">
-          <label class="text-xs uppercase font-bold text-gray-500 ml-1">Nome Completo</label>
-          <input v-model="form.fullName" type="text" required class="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none transition" placeholder="Seu nome" />
-        </div>
-
         <div>
-          <label class="text-xs uppercase font-bold text-gray-500 ml-1">E-mail</label>
-          <input v-model="form.email" type="email" required class="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none transition" placeholder="seu@email.com" />
+          <label class="block text-xs uppercase font-bold text-gray-500 mb-1 ml-1">E-mail</label>
+          <input v-model="form.email" type="email" required class="w-full bg-[#0a0a0a] border border-white/10 rounded-lg p-3 text-white placeholder-gray-600 focus:border-[#00ffc2] outline-none transition" placeholder="seu@email.com" />
         </div>
 
         <div>
           <div class="flex justify-between items-center mb-1">
             <label class="text-xs uppercase font-bold text-gray-500 ml-1">Senha</label>
-            <router-link to="/recuperar-senha" class="text-[10px] text-atk-neon font-bold uppercase hover:underline hover:text-white transition">
-              Esqueceu a senha?
+            <router-link to="/recuperar-senha" class="text-[10px] text-[#00ffc2] font-bold uppercase hover:underline hover:text-white transition">
+              Esqueceu?
             </router-link>
           </div>
-          <input v-model="form.password" type="password" required class="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white focus:border-atk-neon outline-none transition" placeholder="••••••••" />
+          <input v-model="form.password" type="password" required class="w-full bg-[#0a0a0a] border border-white/10 rounded-lg p-3 text-white placeholder-gray-600 focus:border-[#00ffc2] outline-none transition" placeholder="••••••••" />
         </div>
 
-        <button type="submit" :disabled="loading" class="w-full bg-atk-neon text-atk-dark font-extrabold uppercase py-3 rounded-lg hover:bg-white transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-          <span v-if="loading" class="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2"></span>
-          {{ isLogin ? 'Entrar' : 'Cadastrar' }}
+        <button 
+          :disabled="loading" 
+          class="w-full bg-[#00ffc2] text-[#0f0f0f] font-extrabold uppercase py-3 rounded-lg hover:bg-white hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(0,255,194,0.3)] mt-2"
+        >
+          <span v-if="loading">Entrando...</span>
+          <span v-else>Entrar</span>
         </button>
+
       </form>
       
       <div class="mt-6 text-center text-sm text-gray-400">
-        {{ isLogin ? 'Ainda não tem conta?' : 'Já tem uma conta?' }}
-        <button @click="toggleMode" class="text-atk-neon font-bold hover:underline ml-1">
-          {{ isLogin ? 'Cadastre-se' : 'Faça Login' }}
-        </button>
+        Não tem conta? 
+        <router-link to="/registro" class="text-[#00ffc2] font-bold hover:underline ml-1">
+          Criar conta
+        </router-link>
       </div>
 
     </div>
   </div>
 </template>
-
-<style scoped>
-.animate-fade-in { animation: fadeIn 0.3s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-</style>
