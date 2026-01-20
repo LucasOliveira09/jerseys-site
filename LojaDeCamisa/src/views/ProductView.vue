@@ -5,7 +5,7 @@ import { supabase } from '../supabase'
 import { useCartStore } from '../stores/cart'
 import ProductCard from '../components/ProductCard.vue'
 import Swal from 'sweetalert2'
-import { useHead } from '@vueuse/head' // <--- 1. IMPORT NOVO
+import { useHead } from '@vueuse/head'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,73 +18,73 @@ const user = ref(null)
 const carregando = ref(true)
 const erro = ref('')
 
-// --- SEO DINÂMICO (NOVO) ---
-// Isso atualiza a aba e o Google automaticamente
+// Controle do Carrossel de Relacionados
+const relatedContainer = ref(null)
+
+// --- SEO DINÂMICO ---
 useHead({
   title: computed(() => produto.value ? `${produto.value.name} | LGA Sports` : 'Carregando... | LGA Sports'),
   meta: [
     {
       name: 'description',
       content: computed(() => produto.value 
-        ? `Compre agora ${produto.value.name}. Versão ${produto.value.category || 'Oficial'}. Personalize com seu nome e número. Entrega garantida para todo o Brasil.` 
+        ? `Compre agora ${produto.value.name}. Versão ${produto.value.category || 'Oficial'}. Personalize com seu nome e número. Entrega garantida.` 
         : 'Loja de artigos esportivos')
     },
-    // Tags para WhatsApp / Facebook (Open Graph)
-    {
-      property: 'og:title',
-      content: computed(() => produto.value ? produto.value.name : 'LGA Sports')
-    },
-    {
-      property: 'og:description',
-      content: computed(() => produto.value 
-        ? `Garanta seu manto ${produto.value.name} com o melhor preço. Acesse!` 
-        : 'Confira nossos produtos.')
-    },
-    {
-      property: 'og:image',
-      content: computed(() => produto.value ? produto.value.image_cover : '')
-    },
-    {
-      property: 'og:url',
-      content: computed(() => window.location.href)
-    }
+    { property: 'og:title', content: computed(() => produto.value ? produto.value.name : 'LGA Sports') },
+    { property: 'og:image', content: computed(() => produto.value ? produto.value.image_cover : '') }
   ]
 })
 
-// --- RESTANTE DO SEU CÓDIGO (Mantido igual) ---
 const imagemAtualIndex = ref(0) 
 const scrollContainer = ref(null) 
 const showGuiaMedidas = ref(false)
 
-// ... (Copie o resto das suas variáveis: tamanhoSelecionado, versaoSelecionada, tabelasMedidas, etc.)
+// --- OPÇÕES DE COMPRA ---
 const tamanhoSelecionado = ref('')
 const versaoSelecionada = ref('torcedor')
 const querPersonalizar = ref(false)
 const nomePersonalizado = ref('')
 const numeroPersonalizado = ref('')
 const patchSelecionado = ref('')
+
+// --- AVALIAÇÃO ---
 const novaAvaliacao = ref({ rating: 5, comment: '' })
 const enviandoReview = ref(false)
+
+// --- FRETE ---
 const cep = ref('')
 const calculandoFrete = ref(false)
 const freteCalculado = ref(null)
+
 const tamanhosPadrao = ['P', 'M', 'G', 'GG', 'XG']
 const patchesDisponiveis = ['Nenhum', 'Champions League', 'Libertadores', 'Brasileirão', 'Premier League', 'Mundial FIFA']
 
-// Mantenha suas funções auxiliares (showAlert, tabelasMedidas, computed properties, etc.)
-// ...
 const showAlert = (title, text, icon = 'info') => {
   return Swal.fire({
     title: title, text: text, icon: icon,
-    background: '#151515', color: '#fff', confirmButtonColor: '#00ffc2', confirmButtonText: 'OK'
+    background: '#151515', color: '#fff', confirmButtonColor: '#00ffc2', confirmButtonText: 'OK',
+    iconColor: icon === 'success' ? '#00ffc2' : undefined
   })
 }
 
-// (Mantenha tabelasMedidas e tabelaAtiva aqui...)
-// ...
+// TABELAS DE MEDIDAS
+const tabelasMedidas = {
+  torcedor: { titulo: 'Versão Fan (Torcedor)', headers: ['Tam.', 'Largura', 'Comp.', 'Altura'], rows: [{ t: 'P', l: '53-55', c: '69-71', a: '162-170' }, { t: 'M', l: '55-57', c: '71-73', a: '170-176' }, { t: 'G', l: '57-58', c: '73-75', a: '176-182' }, { t: 'GG', l: '58-60', c: '75-78', a: '182-190' }, { t: '2XL', l: '60-62', c: '78-81', a: '190-195' }] },
+  jogador: { titulo: 'Versão Player (Jogador)', headers: ['Tam.', 'Largura', 'Comp.', 'Altura'], rows: [{ t: 'P', l: '49-51', c: '67-69', a: '162-170' }, { t: 'M', l: '51-53', c: '69-71', a: '170-175' }, { t: 'G', l: '53-55', c: '71-73', a: '175-180' }, { t: 'GG', l: '55-57', c: '73-76', a: '180-185' }, { t: '2XL', l: '57-60', c: '76-78', a: '185-190' }] },
+  infantil: { titulo: 'Kit Infantil', headers: ['Tam.', 'Idade', 'Largura', 'Comp.'], rows: [{ t: '16', i: '3-4 anos', l: '35', c: '44' }, { t: '22', i: '6-7 anos', l: '41', c: '53' }, { t: '28', i: '12-13 anos', l: '47', c: '62' }] }
+}
+
+const tabelaAtiva = computed(() => {
+  if (!produto.value) return tabelasMedidas.torcedor
+  const cat = (produto.value.category || '').toLowerCase()
+  if (cat.includes('kid') || cat.includes('infantil')) return tabelasMedidas.infantil
+  if (versaoSelecionada.value === 'jogador') return tabelasMedidas.jogador
+  return tabelasMedidas.torcedor
+})
 
 const mediaEstrelas = computed(() => {
-  if (!reviews.value || reviews.value.length === 0) return 5.0
+  if (!reviews.value?.length) return 5.0
   const total = reviews.value.reduce((acc, r) => acc + (r.rating || 0), 0)
   return (total / reviews.value.length).toFixed(1)
 })
@@ -98,36 +98,30 @@ async function carregarProduto() {
     const { data: userData } = await supabase.auth.getUser()
     user.value = userData.user
 
-    const { data, error } = await supabase
-      .from('produtos') 
-      .select('*')
-      .eq('slug', route.params.slug)
-      .single()
-
+    const { data, error } = await supabase.from('produtos').select('*').eq('slug', route.params.slug).single()
     if (error) throw error
     produto.value = data
     imagemAtualIndex.value = 0
 
     // Busca Reviews
     const { data: reviewsData } = await supabase.from('reviews')
-      .select('id, rating, comment, created_at, profiles (full_name)') 
+      .select('id, rating, comment, created_at, profiles ( full_name )') 
       .eq('product_id', data.id).order('created_at', { ascending: false })
     reviews.value = reviewsData || []
 
-    // Busca Relacionados
+    // Busca Relacionados (COM FILTRO RÍGIDO DE CATEGORIA)
     if (produto.value) {
-      const termoBusca = produto.value.name.split(' ')[0]
-      buscarRelacionados(produto.value.league, termoBusca, produto.value.id)
+      const termoBusca = produto.value.name.split(' ')[1] || produto.value.name.split(' ')[0]
+      // Passamos a categoria atual também
+      buscarRelacionados(produto.value.league, termoBusca, produto.value.category, produto.value.id)
     }
   } catch (err) {
-    console.error(err)
     erro.value = 'Produto não encontrado.'
   } finally {
     carregando.value = false
   }
 }
 
-// ... (Mantenha o restante das funções: resetarEstados, buscarRelacionados, enviarAvaliacao, todasImagens, etc.)
 function resetarEstados() {
   tamanhoSelecionado.value = ''
   versaoSelecionada.value = 'torcedor'
@@ -141,10 +135,44 @@ function resetarEstados() {
   novaAvaliacao.value = { rating: 5, comment: '' }
 }
 
-async function buscarRelacionados(liga, termoNome, idAtual) {
-  const { data } = await supabase.from('produtos').select('*').eq('active', true).neq('id', idAtual)
-    .or(`league.eq.${liga},name.ilike.%${termoNome}%`).limit(4)
-  relacionados.value = data || []
+// 🔴 ALTERAÇÃO AQUI: Recebe 'categoria' e filtra
+// 🔴 ALTERAÇÃO: Lógica de Prioridade (Mesma Liga Primeiro)
+async function buscarRelacionados(liga, termoNome, categoria, idAtual) {
+  const { data } = await supabase
+    .from('produtos')
+    .select('*')
+    .eq('active', true)
+    .eq('category', categoria) // Mantém apenas o mesmo tipo (Torcedor, Player, etc.)
+    .neq('id', idAtual)
+    .or(`league.eq.${liga},name.ilike.%${termoNome}%`)
+    .limit(20) // Buscamos mais itens (20) para ter margem de ordenação
+  
+  if (data) {
+    // AQUI ESTÁ O TRUQUE:
+    // Ordenamos o array manualmente. Quem for da mesma liga ganha "pontos" e sobe.
+    data.sort((a, b) => {
+      const aEhDaMesmaLiga = a.league === liga ? 1 : 0
+      const bEhDaMesmaLiga = b.league === liga ? 1 : 0
+      
+      // Se b for da mesma liga e a não, b vem primeiro (decrescente)
+      return bEhDaMesmaLiga - aEhDaMesmaLiga
+    })
+
+    // Depois de ordenar, cortamos para exibir apenas os 12 melhores
+    relacionados.value = data.slice(0, 12)
+  } else {
+    relacionados.value = []
+  }
+}
+
+function scrollRelacionados(direcao) {
+  if (relatedContainer.value) {
+    const scrollAmount = 300
+    relatedContainer.value.scrollBy({ 
+      left: direcao === 'dir' ? scrollAmount : -scrollAmount, 
+      behavior: 'smooth' 
+    })
+  }
 }
 
 async function enviarAvaliacao() {
@@ -160,11 +188,8 @@ async function enviarAvaliacao() {
     await carregarProduto() 
     showAlert('Sucesso!', 'Avaliação publicada.', 'success')
     novaAvaliacao.value.comment = ''; novaAvaliacao.value.rating = 5
-  } catch (err) {
-    showAlert('Erro', 'Não foi possível enviar.', 'error')
-  } finally {
-    enviandoReview.value = false
-  }
+  } catch (err) { showAlert('Erro', 'Não foi possível enviar.', 'error') } 
+  finally { enviandoReview.value = false }
 }
 
 const todasImagens = computed(() => {
@@ -191,7 +216,7 @@ function onScroll() {
 }
 
 const listaTamanhos = computed(() => {
-  if (!produto.value || !produto.value.sizes) return tamanhosPadrao
+  if (!produto.value?.sizes) return tamanhosPadrao
   try {
     const parsed = typeof produto.value.sizes === 'string' ? JSON.parse(produto.value.sizes) : produto.value.sizes
     return Array.isArray(parsed) ? parsed : tamanhosPadrao
@@ -216,12 +241,9 @@ function formatarCep() {
 function calcularFrete() {
   if (cep.value.length < 9) { showAlert('CEP Inválido', 'Digite o CEP completo.', 'warning'); return }
   calculandoFrete.value = true; freteCalculado.value = null
-  const hoje = new Date(); const dataMin = new Date(hoje); dataMin.setDate(hoje.getDate() + 25)
-  const dataMax = new Date(hoje); dataMax.setDate(hoje.getDate() + 30)
-  const opcoes = { day: '2-digit', month: '2-digit' }
   setTimeout(() => {
     calculandoFrete.value = false
-    freteCalculado.value = { prazo: `Chega entre ${dataMin.toLocaleDateString('pt-BR', opcoes)} e ${dataMax.toLocaleDateString('pt-BR', opcoes)}`, regra: 'Compre 3 camisas e ganhe Frete Grátis!' }
+    freteCalculado.value = { prazo: '15-25 dias úteis', regra: 'Frete Grátis na compra de 3 peças!' }
   }, 1000)
 }
 
@@ -256,147 +278,174 @@ onMounted(() => carregarProduto())
       <router-link to="/produtos" class="text-atk-neon hover:underline">Voltar ao catálogo</router-link>
     </div>
     <div v-else>
-        <div class="max-w-7xl mx-auto px-4 py-6 text-xs md:text-sm text-gray-500 uppercase tracking-widest flex flex-wrap gap-2">
-            <router-link to="/" class="hover:text-white">Home</router-link> / 
-            <router-link to="/produtos" class="hover:text-white">Catálogo</router-link> / 
-            <span class="text-atk-neon font-bold truncate">{{ produto.name }}</span>
+      <div class="max-w-7xl mx-auto px-4 py-6 text-xs md:text-sm text-gray-500 uppercase tracking-widest flex flex-wrap gap-2">
+        <router-link to="/" class="hover:text-white">Home</router-link> / 
+        <router-link to="/produtos" class="hover:text-white">Catálogo</router-link> / 
+        <span class="text-atk-neon font-bold truncate">{{ produto.name }}</span>
+      </div>
+
+      <div class="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-10 mb-12">
+        <div class="lg:col-span-7 space-y-4">
+          <div class="relative group bg-[#1a1a1a] rounded-xl border border-white/5 aspect-square overflow-hidden">
+              <div ref="scrollContainer" @scroll="onScroll" class="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar">
+                <div v-for="(img, index) in todasImagens" :key="index" class="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-6">
+                  <img :src="img" :alt="produto.name" class="max-w-full max-h-full object-contain drop-shadow-2xl" />
+                </div>
+              </div>
+              <button v-if="imagemAtualIndex > 0" @click="selecionarImagem(imagemAtualIndex - 1)" class="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❮</button>
+              <button v-if="imagemAtualIndex < todasImagens.length - 1" @click="selecionarImagem(imagemAtualIndex + 1)" class="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full z-20">❯</button>
+              <div class="absolute bottom-4 left-0 w-full flex justify-center gap-2 z-10">
+                <span v-for="(_, idx) in todasImagens" :key="idx" class="block w-2 h-2 rounded-full transition-all" :class="idx === imagemAtualIndex ? 'bg-atk-neon w-4' : 'bg-gray-500'"></span>
+              </div>
+          </div>
+          <div v-if="todasImagens.length > 1" class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+            <button v-for="(img, index) in todasImagens" :key="index" @click="selecionarImagem(index)" class="w-20 h-20 flex-shrink-0 rounded-lg border-2 overflow-hidden p-1 bg-[#1a1a1a] transition-all" :class="imagemAtualIndex === index ? 'border-atk-neon opacity-100' : 'border-transparent opacity-60 hover:opacity-100'">
+              <img :src="img" class="w-full h-full object-contain" />
+            </button>
+          </div>
         </div>
-        
-        <div class="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-10 mb-12">
-            <div class="lg:col-span-7 space-y-4">
-               <div class="relative group bg-[#1a1a1a] rounded-xl border border-white/5 aspect-square overflow-hidden">
-                  <div ref="scrollContainer" @scroll="onScroll" class="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar">
-                    <div v-for="(img, index) in todasImagens" :key="index" class="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-6">
-                      <img :src="img" :alt="produto.name" class="max-w-full max-h-full object-contain drop-shadow-2xl" />
-                    </div>
-                  </div>
-                  </div>
-               </div>
-            
-            <div class="lg:col-span-5 flex flex-col gap-6">
-               <div>
-                  <h1 class="text-3xl md:text-4xl font-extrabold uppercase leading-none mb-2">{{ produto.name }}</h1>
-                  </div>
-               <div class="bg-[#1a1a1a] p-5 rounded-xl border border-white/10">
-                  <div class="flex items-baseline gap-2"><span class="text-atk-neon text-5xl font-extrabold tracking-tighter">R$ {{ precoFinal.toFixed(2) }}</span></div>
-                  <p class="text-green-500 text-xs font-bold mt-2">em até 3x sem juros ou 5% OFF no PIX</p>
-               </div>
-               
-               <div>
-                  <h3 class="font-bold text-white uppercase tracking-wider text-sm mb-3">1. Escolha a Versão</h3>
-                  <div class="grid grid-cols-2 gap-3">
-                    <div @click="versaoSelecionada = 'torcedor'" class="border rounded-lg p-3 cursor-pointer transition-all relative" :class="versaoSelecionada === 'torcedor' ? 'border-atk-neon bg-atk-neon/5' : 'border-white/10 bg-[#151515]'">
-                      <p class="font-bold uppercase text-sm">Torcedor</p><span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 139,90</span>
-                    </div>
-                    <div @click="versaoSelecionada = 'jogador'" class="border rounded-lg p-3 cursor-pointer transition-all relative" :class="versaoSelecionada === 'jogador' ? 'border-atk-neon bg-atk-neon/5' : 'border-white/10 bg-[#151515]'">
-                      <p class="font-bold uppercase text-sm text-atk-neon">Jogador</p><span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 179,90</span>
-                    </div>
-                  </div>
-               </div>
-               
-               <div>
-                  <div class="flex justify-between items-center mb-3">
-                    <h3 class="font-bold text-white uppercase tracking-wider text-sm">2. Tamanho</h3>
-                    <button @click="showGuiaMedidas = true" class="flex items-center gap-2 text-xs font-bold text-atk-neon border border-atk-neon/30 px-3 py-1.5 rounded hover:bg-atk-neon hover:text-atk-dark transition">!- Tabela de Medidas -!</button>
-                  </div>
-                  <div class="flex flex-wrap gap-3">
-                    <button v-for="tamanho in listaTamanhos" :key="tamanho" @click="tamanhoSelecionado = tamanho" class="w-12 h-12 rounded border-2 flex items-center justify-center font-bold transition-all" :class="tamanhoSelecionado === tamanho ? 'border-atk-neon bg-atk-neon text-atk-dark shadow-neon' : 'border-gray-700 text-gray-400 hover:border-white hover:text-white'">{{ tamanho }}</button>
-                  </div>
-               </div>
 
-               <div class="bg-[#151515] p-4 rounded-lg border border-dashed border-white/20">
-                  <div class="flex items-center gap-2 mb-2">
-                     <input type="checkbox" id="personalizar" v-model="querPersonalizar" class="w-4 h-4 accent-atk-neon"><label for="personalizar" class="font-bold uppercase text-sm">Personalizar (+ R$ 17,00)</label>
-                  </div>
-                  <div v-if="querPersonalizar" class="grid grid-cols-3 gap-3 mt-4 animate-fade-in-down">
-                     <div class="col-span-2"><input v-model="nomePersonalizado" type="text" placeholder="NOME" class="w-full bg-black border border-white/20 rounded p-2 text-white uppercase outline-none focus:border-atk-neon" /></div>
-                     <div class="col-span-1"><input v-model="numeroPersonalizado" type="number" placeholder="10" class="w-full bg-black border border-white/20 rounded p-2 text-white text-center outline-none focus:border-atk-neon" /></div>
-                  </div>
-               </div>
-
-               <div>
-                  <h3 class="font-bold text-white uppercase tracking-wider text-sm mb-2">4. Patch (+ R$ 6,00)</h3>
-                  <select v-model="patchSelecionado" class="w-full bg-[#151515] border border-white/20 text-white p-3 rounded-lg outline-none focus:border-atk-neon"><option value="" disabled selected>Selecione (Opcional)</option><option v-for="patch in patchesDisponiveis" :key="patch" :value="patch">{{ patch }}</option></select>
-               </div>
-
-               <button @click="adicionarAoCarrinho" :disabled="!tamanhoSelecionado" class="w-full bg-atk-neon text-atk-dark py-5 rounded-xl font-extrabold uppercase tracking-widest text-lg hover:bg-white hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(0,255,194,0.3)] disabled:opacity-50">Adicionar ao Carrinho</button>
-               
-               <div class="bg-[#101010] border border-white/10 rounded-lg p-4">
-                   <div class="flex gap-2 mb-2">
-                     <input v-model="cep" @input="formatarCep" maxlength="9" type="text" placeholder="00000-000" class="bg-black border border-white/20 text-white px-3 py-2 rounded flex-grow outline-none focus:border-atk-neon text-sm">
-                     <button @click="calcularFrete" class="bg-gray-700 hover:bg-white hover:text-black text-white px-4 py-2 rounded text-xs font-bold uppercase transition">{{ calculandoFrete ? '...' : 'Calcular' }}</button>
-                   </div>
-                   <div v-if="freteCalculado" class="text-xs bg-atk-neon/10 border border-atk-neon/30 p-3 rounded mt-2 animate-fade-in-down"><p class="text-white font-bold">📅 <span class="text-atk-neon text-sm">{{ freteCalculado.prazo }}</span></p></div>
-               </div>
+        <div class="lg:col-span-5 flex flex-col gap-6">
+          <div>
+            <h1 class="text-3xl md:text-4xl font-extrabold uppercase leading-none mb-2">{{ produto.name }}</h1>
+            <div class="flex items-center gap-4 text-sm">
+              <span class="text-gray-400">{{ produto.category }}</span>
+              <div class="flex items-center text-yellow-400 font-bold">
+                <span class="text-lg mr-1">★</span> {{ mediaEstrelas }} 
+                <span class="text-gray-500 font-normal ml-2">({{ reviews.length }} avaliações)</span>
+              </div>
             </div>
+          </div>
+
+          <div class="bg-[#1a1a1a] p-5 rounded-xl border border-white/10">
+            <div class="flex items-baseline gap-2"><span class="text-atk-neon text-5xl font-extrabold tracking-tighter">R$ {{ precoFinal.toFixed(2) }}</span></div>
+            <p class="text-green-500 text-xs font-bold mt-2">em até 2x sem juros ou 2% OFF no PIX</p>
+          </div>
+
+          <div>
+            <h3 class="font-bold text-white uppercase tracking-wider text-sm mb-3">1. Escolha a Versão</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div @click="versaoSelecionada = 'torcedor'" class="border rounded-lg p-3 cursor-pointer transition-all relative" :class="versaoSelecionada === 'torcedor' ? 'border-atk-neon bg-atk-neon/5' : 'border-white/10 bg-[#151515]'">
+                <p class="font-bold uppercase text-sm">Torcedor</p><span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 139,90</span>
+              </div>
+              <div @click="versaoSelecionada = 'jogador'" class="border rounded-lg p-3 cursor-pointer transition-all relative" :class="versaoSelecionada === 'jogador' ? 'border-atk-neon bg-atk-neon/5' : 'border-white/10 bg-[#151515]'">
+                <p class="font-bold uppercase text-sm text-atk-neon">Jogador</p><span class="absolute top-3 right-3 font-bold text-white text-xs">R$ 179,90</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="font-bold text-white uppercase tracking-wider text-sm">2. Tamanho</h3>
+              <button @click="showGuiaMedidas = true" class="flex items-center gap-2 text-xs font-bold text-atk-neon border border-atk-neon/30 px-3 py-1.5 rounded hover:bg-atk-neon hover:text-atk-dark transition">!- Tabela de Medidas -!</button>
+            </div>
+            <div class="flex flex-wrap gap-3">
+              <button v-for="tamanho in listaTamanhos" :key="tamanho" @click="tamanhoSelecionado = tamanho" class="w-12 h-12 rounded border-2 flex items-center justify-center font-bold transition-all" :class="tamanhoSelecionado === tamanho ? 'border-atk-neon bg-atk-neon text-atk-dark shadow-neon' : 'border-gray-700 text-gray-400 hover:border-white hover:text-white'">{{ tamanho }}</button>
+            </div>
+          </div>
+
+          <div class="bg-[#151515] p-4 rounded-lg border border-dashed border-white/20">
+            <div class="flex items-center gap-2 mb-2">
+               <input type="checkbox" id="personalizar" v-model="querPersonalizar" class="w-4 h-4 accent-atk-neon"><label for="personalizar" class="font-bold uppercase text-sm">Personalizar (+ R$ 17,00)</label>
+            </div>
+            <div v-if="querPersonalizar" class="grid grid-cols-3 gap-3 mt-4 animate-fade-in-down">
+               <div class="col-span-2"><input v-model="nomePersonalizado" type="text" placeholder="NOME" class="w-full bg-black border border-white/20 rounded p-2 text-white uppercase outline-none focus:border-atk-neon" /></div>
+               <div class="col-span-1"><input v-model="numeroPersonalizado" type="number" placeholder="10" class="w-full bg-black border border-white/20 rounded p-2 text-white text-center outline-none focus:border-atk-neon" /></div>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="font-bold text-white uppercase tracking-wider text-sm mb-2">4. Patch (+ R$ 6,00)</h3>
+            <select v-model="patchSelecionado" class="w-full bg-[#151515] border border-white/20 text-white p-3 rounded-lg outline-none focus:border-atk-neon"><option value="" disabled selected>Selecione (Opcional)</option><option v-for="patch in patchesDisponiveis" :key="patch" :value="patch">{{ patch }}</option></select>
+          </div>
+
+          <button @click="adicionarAoCarrinho" :disabled="!tamanhoSelecionado" class="w-full bg-atk-neon text-atk-dark py-5 rounded-xl font-extrabold uppercase tracking-widest text-lg hover:bg-white hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(0,255,194,0.3)] disabled:opacity-50">Adicionar ao Carrinho</button>
+          
+          <div class="bg-[#101010] border border-white/10 rounded-lg p-4">
+             <div class="flex gap-2 mb-2">
+               <input v-model="cep" @input="formatarCep" maxlength="9" type="text" placeholder="00000-000" class="bg-black border border-white/20 text-white px-3 py-2 rounded flex-grow outline-none focus:border-atk-neon text-sm">
+               <button @click="calcularFrete" class="bg-gray-700 hover:bg-white hover:text-black text-white px-4 py-2 rounded text-xs font-bold uppercase transition">{{ calculandoFrete ? '...' : 'Calcular' }}</button>
+             </div>
+             <div v-if="freteCalculado" class="text-xs bg-atk-neon/10 border border-atk-neon/30 p-3 rounded mt-2 animate-fade-in-down"><p class="text-white font-bold">📅 <span class="text-atk-neon text-sm">{{ freteCalculado.prazo }}</span></p></div>
+          </div>
         </div>
+      </div>
+
+      <div class="max-w-7xl mx-auto px-4 mb-20">
+        <h2 class="text-2xl font-bold uppercase mb-8 border-b border-white/10 pb-4 flex items-center gap-2">
+          Avaliações dos Torcedores <span class="text-sm bg-white/10 px-2 py-1 rounded text-atk-neon font-mono">{{ reviews.length }}</span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="bg-[#151515] p-6 rounded-xl border border-white/10 h-fit">
+            <h3 class="font-bold text-white mb-4">Deixe sua opinião</h3>
+            <div v-if="user">
+              <div class="flex gap-1 mb-4">
+                <button v-for="star in 5" :key="star" @click="novaAvaliacao.rating = star" class="text-2xl transition hover:scale-110" :class="star <= novaAvaliacao.rating ? 'text-yellow-400' : 'text-gray-600'">★</button>
+              </div>
+              <textarea v-model="novaAvaliacao.comment" rows="4" placeholder="O que achou do manto?" class="w-full bg-black border border-white/20 rounded p-3 text-white text-sm mb-4 outline-none focus:border-atk-neon"></textarea>
+              <button @click="enviarAvaliacao" :disabled="enviandoReview" class="w-full bg-white text-black font-bold py-2 rounded hover:bg-atk-neon hover:text-black transition uppercase text-xs">
+                {{ enviandoReview ? 'Enviando...' : 'Publicar Avaliação' }}
+              </button>
+            </div>
+            <div v-else class="text-center py-6">
+              <p class="text-gray-400 text-sm mb-4">Faça login para avaliar este produto.</p>
+              <router-link to="/login" class="text-atk-neon font-bold border border-atk-neon px-4 py-2 rounded uppercase text-xs hover:bg-atk-neon hover:text-black transition">Entrar</router-link>
+            </div>
+          </div>
+          <div class="md:col-span-2 space-y-4">
+            <div v-if="reviews.length === 0" class="text-gray-500 italic">Seja o primeiro a avaliar este manto!</div>
+            <div v-for="review in reviews" :key="review.id" class="bg-[#1a1a1a] p-4 rounded-lg border border-white/5 animate-fade-in">
+              <div class="flex justify-between items-start mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-xs text-atk-neon">
+                    {{ review.profiles?.full_name ? review.profiles.full_name[0].toUpperCase() : '?' }}
+                  </div>
+                  <div>
+                    <p class="text-sm font-bold text-white">{{ review.profiles?.full_name || 'Torcedor Anônimo' }}</p>
+                    <div class="flex text-yellow-400 text-xs"><span v-for="n in review.rating" :key="n">★</span></div>
+                  </div>
+                </div>
+                <span class="text-[10px] text-gray-600">{{ new Date(review.created_at).toLocaleDateString() }}</span>
+              </div>
+              <p class="text-gray-300 text-sm leading-relaxed">"{{ review.comment }}"</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="max-w-7xl mx-auto px-4 mb-20 grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="bg-[#151515] rounded-xl overflow-hidden border border-white/5 relative h-80 md:h-auto">
+          <img src="https://images.unsplash.com/photo-1579952363873-27f3bade8f55?q=80&w=2070" class="w-full h-full object-cover grayscale opacity-40" />
+          <div class="absolute inset-0 p-8 flex flex-col justify-end bg-gradient-to-t from-black via-black/50 to-transparent">
+             <h3 class="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">Tecnologia de <span class="text-atk-neon">Elite</span></h3>
+             <p class="text-gray-300 text-sm leading-relaxed">Tecido respirável de alta performance com tecnologia DRI-FIT, garantindo frescor e leveza. Escudo bordado em alta definição e costuras reforçadas.</p>
+          </div>
+        </div>
+        <div class="bg-[#151515] rounded-xl border border-white/5 p-8">
+           <h3 class="text-xl font-bold text-white mb-6 uppercase flex items-center gap-2">Cuidados com o Manto</h3>
+           <div class="space-y-4">
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">💧</div><div><p class="font-bold text-sm text-white">Lavar à mão</p><p class="text-xs text-gray-500">Água fria sempre.</p></div></div>
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🚫</div><div><p class="font-bold text-sm text-white">Não usar alvejante</p><p class="text-xs text-gray-500">Químicos danificam.</p></div></div>
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🔥</div><div><p class="font-bold text-sm text-white">Não passar ferro na estampa</p><p class="text-xs text-gray-500">Se precisar, use do avesso.</p></div></div>
+           </div>
+        </div>
+      </div>
+
+      <div v-if="relacionados.length > 0" class="max-w-7xl mx-auto px-4 border-t border-white/10 pt-12 relative group/carousel">
+        <h3 class="text-2xl font-extrabold uppercase tracking-tighter mb-8 text-center flex items-center justify-center gap-3">
+          Produtos <span class="text-atk-neon">Relacionados:</span>
+        </h3>
         
-        <div class="max-w-7xl mx-auto px-4 mb-20">
-           <h2 class="text-2xl font-bold uppercase mb-8 border-b border-white/10 pb-4 flex items-center gap-2">
-             Avaliações dos Torcedores <span class="text-sm bg-white/10 px-2 py-1 rounded text-atk-neon font-mono">{{ reviews.length }}</span>
-           </h2>
-           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div class="bg-[#151515] p-6 rounded-xl border border-white/10 h-fit">
-                 <h3 class="font-bold text-white mb-4">Deixe sua opinião</h3>
-                 <div v-if="user">
-                    <div class="flex gap-1 mb-4">
-                      <button v-for="star in 5" :key="star" @click="novaAvaliacao.rating = star" class="text-2xl transition hover:scale-110" :class="star <= novaAvaliacao.rating ? 'text-yellow-400' : 'text-gray-600'">★</button>
-                    </div>
-                    <textarea v-model="novaAvaliacao.comment" rows="4" placeholder="O que achou do manto?" class="w-full bg-black border border-white/20 rounded p-3 text-white text-sm mb-4 outline-none focus:border-atk-neon"></textarea>
-                    <button @click="enviarAvaliacao" :disabled="enviandoReview" class="w-full bg-white text-black font-bold py-2 rounded hover:bg-atk-neon hover:text-black transition uppercase text-xs">
-                      {{ enviandoReview ? 'Enviando...' : 'Publicar Avaliação' }}
-                    </button>
-                 </div>
-                 <div v-else class="text-center py-6">
-                    <p class="text-gray-400 text-sm mb-4">Faça login para avaliar este produto.</p>
-                    <router-link to="/login" class="text-atk-neon font-bold border border-atk-neon px-4 py-2 rounded uppercase text-xs hover:bg-atk-neon hover:text-black transition">Entrar</router-link>
-                 </div>
-              </div>
-              <div class="md:col-span-2 space-y-4">
-                 <div v-if="reviews.length === 0" class="text-gray-500 italic">Seja o primeiro a avaliar este manto!</div>
-                 <div v-for="review in reviews" :key="review.id" class="bg-[#1a1a1a] p-4 rounded-lg border border-white/5 animate-fade-in">
-                    <div class="flex justify-between items-start mb-2">
-                       <div class="flex items-center gap-2">
-                          <div class="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-xs text-atk-neon">
-                             {{ review.profiles?.full_name ? review.profiles.full_name[0].toUpperCase() : '?' }}
-                          </div>
-                          <div>
-                             <p class="text-sm font-bold text-white">{{ review.profiles?.full_name || 'Torcedor Anônimo' }}</p>
-                             <div class="flex text-yellow-400 text-xs"><span v-for="n in review.rating" :key="n">★</span></div>
-                          </div>
-                       </div>
-                       <span class="text-[10px] text-gray-600">{{ new Date(review.created_at).toLocaleDateString() }}</span>
-                    </div>
-                    <p class="text-gray-300 text-sm leading-relaxed">"{{ review.comment }}"</p>
-                 </div>
-              </div>
-           </div>
-        </div>
+        <button @click="scrollRelacionados('esq')" class="hidden md:block absolute left-0 top-[60%] z-10 bg-black/80 p-3 rounded-full border border-white/10 hover:bg-atk-neon hover:text-black transition opacity-0 group-hover/carousel:opacity-100">❮</button>
+        <button @click="scrollRelacionados('dir')" class="hidden md:block absolute right-0 top-[60%] z-10 bg-black/80 p-3 rounded-full border border-white/10 hover:bg-atk-neon hover:text-black transition opacity-0 group-hover/carousel:opacity-100">❯</button>
 
-        <div class="max-w-7xl mx-auto px-4 mb-20 grid grid-cols-1 md:grid-cols-2 gap-8">
-           <div class="bg-[#151515] rounded-xl overflow-hidden border border-white/5 relative h-80 md:h-auto">
-              <img src="https://images.unsplash.com/photo-1579952363873-27f3bade8f55?q=80&w=2070" class="w-full h-full object-cover grayscale opacity-40" />
-              <div class="absolute inset-0 p-8 flex flex-col justify-end bg-gradient-to-t from-black via-black/50 to-transparent">
-                 <h3 class="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">Tecnologia de <span class="text-atk-neon">Elite</span></h3>
-                 <p class="text-gray-300 text-sm leading-relaxed">Tecido respirável de alta performance com tecnologia DRI-FIT, garantindo frescor e leveza. Escudo bordado em alta definição e costuras reforçadas.</p>
-              </div>
-           </div>
-           <div class="bg-[#151515] rounded-xl border border-white/5 p-8">
-              <h3 class="text-xl font-bold text-white mb-6 uppercase flex items-center gap-2">Cuidados com o Manto</h3>
-              <div class="space-y-4">
-                 <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">💧</div><div><p class="font-bold text-sm text-white">Lavar à mão</p><p class="text-xs text-gray-500">Água fria sempre.</p></div></div>
-                 <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🚫</div><div><p class="font-bold text-sm text-white">Não usar alvejante</p><p class="text-xs text-gray-500">Químicos danificam.</p></div></div>
-                 <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🔥</div><div><p class="font-bold text-sm text-white">Não passar ferro na estampa</p><p class="text-xs text-gray-500">Se precisar, use do avesso.</p></div></div>
-              </div>
-           </div>
+        <div ref="relatedContainer" class="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 no-scrollbar scroll-smooth px-2">
+          <div v-for="item in relacionados" :key="item.id" class="w-64 flex-shrink-0 snap-center">
+             <ProductCard :product="item" />
+          </div>
         </div>
+      </div>
 
-        <div v-if="relacionados.length > 0" class="max-w-7xl mx-auto px-4 border-t border-white/10 pt-12">
-           <h3 class="text-2xl font-extrabold uppercase tracking-tighter mb-8 text-center">Sugestões para <span class="text-atk-neon">você</span></h3>
-           <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <ProductCard v-for="item in relacionados" :key="item.id" :product="item" />
-           </div>
-        </div>
     </div>
 
     <div v-if="showGuiaMedidas" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showGuiaMedidas = false">
@@ -410,7 +459,7 @@ onMounted(() => carregarProduto())
                 <tbody class="text-gray-300">
                    <tr v-for="(row, idx) in tabelaAtiva.rows" :key="idx" class="border-b border-white/10 hover:bg-white/5 transition">
                       <td class="p-3 font-bold text-white">{{ row.t }}</td>
-                      <template v-if="tabelaAtiva === tabelasMedidas.infantil"><td>{{ row.i }}</td><td>{{ row.a }}</td><td>{{ row.l }}</td><td>{{ row.c }}</td></template>
+                      <template v-if="tabelaAtiva === tabelasMedidas.infantil"><td>{{ row.i }}</td><td>{{ row.l }}</td><td>{{ row.c }}</td></template>
                       <template v-else><td>{{ row.l }}</td><td>{{ row.c }}</td><td>{{ row.a }}</td></template>
                    </tr>
                 </tbody>
@@ -422,7 +471,6 @@ onMounted(() => carregarProduto())
 </template>
 
 <style scoped>
-/* Estilos mantidos do seu arquivo anterior */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .custom-scrollbar::-webkit-scrollbar { height: 6px; }
@@ -430,6 +478,4 @@ onMounted(() => carregarProduto())
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 .animate-fade-in-down { animation: fadeInDown 0.3s ease-out; }
 @keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-.animate-fade-in { animation: fadeIn 0.5s ease-out; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 </style>

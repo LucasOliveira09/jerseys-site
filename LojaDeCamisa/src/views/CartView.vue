@@ -16,6 +16,10 @@ const subtotal = computed(() => {
 const formatPrice = (value) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
+
+if (cart.itens === 1){
+  console.log('1');
+}
 </script>
 
 <template>
@@ -88,7 +92,10 @@ const formatPrice = (value) => {
               </div>
               <div class="flex justify-between text-gray-400">
                 <span>Entrega</span>
-                <span class="text-xs italic">Calculado no pagamento</span>
+                <span v-if="cart.itens.length === 1" class="text-xs">R$ 25,00</span>
+                <span v-if="cart.itens.length === 2" class="text-xs">R$ 20,00</span>
+                <span v-if="cart.itens.length === 3" class="text-xs">Gratis</span>
+
               </div>
             </div>
 
@@ -96,7 +103,7 @@ const formatPrice = (value) => {
               <span class="font-bold text-lg">Subtotal</span>
               <div class="text-right">
                 <span class="block text-2xl font-extrabold text-atk-neon">{{ formatPrice(subtotal) }}</span>
-                <span class="text-xs text-gray-500">sem frete</span>
+                <span class="text-xs text-gray-500"></span>
               </div>
             </div>
 
