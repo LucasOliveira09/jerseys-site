@@ -13,15 +13,16 @@ const erro = ref('')
 
 // Controle de Paginação e Rolagem Infinita
 const pagina = ref(0)
-const itensPorPagina = 24 // AUMENTADO: Carrega mais itens de uma vez
+const itensPorPagina = 24 
 const temMais = ref(true)
-const loadTrigger = ref(null) // O elemento "sentinela" no fim da página
-let observer = null // O observador de rolagem
+const loadTrigger = ref(null) 
+let observer = null 
 
 // Filtros
 const abaAtiva = ref('torcedor')
 const filtroLiga = ref('')
 const filtroTexto = ref('')
+const filtroTime = ref('') // NOVO: Filtro específico para times
 const ordenacao = ref('padrao')
 
 const ligasDisponiveis = [
@@ -30,7 +31,6 @@ const ligasDisponiveis = [
 
 // --- FUNÇÃO DE BUSCA OTIMIZADA ---
 async function buscarProdutos(novaBusca = false) {
-  // Evita chamadas duplicadas se já estiver carregando ou se acabou os itens
   if (carregando.value || (!temMais.value && !novaBusca)) return
 
   try {
@@ -48,16 +48,24 @@ async function buscarProdutos(novaBusca = false) {
 
     // 1. QUERY BASE
     let query = supabase
-      .from('produtos') // CERTIFIQUE-SE: 'products' ou 'produtos' conforme seu banco
+      .from('produtos') 
       .select('*')
       .eq('active', true)
       .range(inicio, fim)
 
     // 2. APLICAÇÃO DOS FILTROS
+    
+    // CASO 1: Busca Livre (Barra de Pesquisa)
     if (filtroTexto.value) {
       const termo = `%${filtroTexto.value}%`
       query = query.or(`name.ilike.${termo},league.ilike.${termo},category.ilike.${termo}`)
     } 
+    // CASO 2: Busca por Time (Menu Header)
+    else if (filtroTime.value) {
+      // Busca produtos que tenham o nome do time no título
+      query = query.ilike('name', `%${filtroTime.value}%`)
+    }
+    // CASO 3: Filtros de Categoria (Abas + Liga)
     else {
       if (abaAtiva.value === 'torcedor') {
         query = query
@@ -101,7 +109,6 @@ async function buscarProdutos(novaBusca = false) {
 
     if (error) throw error
 
-    // Se vier menos itens do que pedimos, significa que acabou o estoque
     if (data.length < itensPorPagina) {
       temMais.value = false
     }
@@ -120,14 +127,13 @@ async function buscarProdutos(novaBusca = false) {
 // --- LÓGICA DO INFINITE SCROLL ---
 function configurarObserver() {
   const options = {
-    root: null, // Janela do navegador
-    rootMargin: '100px', // Carrega 100px ANTES de chegar no final
+    root: null,
+    rootMargin: '100px',
     threshold: 0.1
   }
 
   observer = new IntersectionObserver((entries) => {
     const target = entries[0]
-    // Se o elemento ficou visível E temos mais itens E não estamos carregando
     if (target.isIntersecting && temMais.value && !carregando.value) {
       buscarProdutos(false)
     }
@@ -141,16 +147,29 @@ function configurarObserver() {
 // --- CONTROLE DE URL E ESTADO ---
 function lerParametrosURL() {
   let mudouAlgo = false
-  if (route.query.q && route.query.q !== filtroTexto.value) {
+
+  // Se tem busca por TIME na URL
+  if (route.query.time && route.query.time !== filtroTime.value) {
+    filtroTime.value = route.query.time
+    abaAtiva.value = 'todos' // Reseta aba
+    filtroTexto.value = ''
+    filtroLiga.value = ''
+    mudouAlgo = true
+  }
+  // Se tem busca por TEXTO na URL
+  else if (route.query.q && route.query.q !== filtroTexto.value) {
     filtroTexto.value = route.query.q
     abaAtiva.value = 'todos'
+    filtroTime.value = ''
     filtroLiga.value = ''
     mudouAlgo = true
   } 
+  // Se tem busca por LIGA na URL
   else if (route.query.liga && route.query.liga !== filtroLiga.value) {
     filtroLiga.value = route.query.liga
     abaAtiva.value = 'torcedor'
     filtroTexto.value = ''
+    filtroTime.value = ''
     mudouAlgo = true
   }
 
@@ -162,11 +181,17 @@ function lerParametrosURL() {
 function setAba(novaAba) {
   if (abaAtiva.value !== novaAba) {
     abaAtiva.value = novaAba
+    // Limpa filtros conflitantes
     filtroTexto.value = ''
+    filtroTime.value = '' 
+    // Se estava filtrando por time/texto, limpa a URL visualmente (opcional)
+    if (route.query.time || route.query.q) {
+        // router.replace('/produtos') // Descomente se quiser limpar a URL
+    }
   }
 }
 
-watch([abaAtiva, filtroLiga, filtroTexto, ordenacao], () => {
+watch([abaAtiva, filtroLiga, filtroTexto, filtroTime, ordenacao], () => {
   buscarProdutos(true)
 })
 
@@ -175,15 +200,10 @@ watch(() => route.query, () => {
 })
 
 onMounted(() => {
-  // 1. Verifica URL ou carrega padrão
-  if (!route.query.q && !route.query.liga) {
-    buscarProdutos(true)
-  } else {
-    lerParametrosURL()
-  }
+  // 1. Verifica URL
+  lerParametrosURL()
   
   // 2. Inicia o "Olheiro" do Scroll
-  // setTimeout garante que o DOM renderizou o elemento loadTrigger
   setTimeout(() => {
     configurarObserver()
   }, 500)
@@ -200,10 +220,12 @@ onUnmounted(() => {
     <div class="bg-[#1a1a1a] border-b border-white/10 pt-10 pb-6 mb-8">
       <div class="max-w-7xl mx-auto px-4 text-center">
         
-        <div v-if="filtroTexto" class="mb-6 animate-fade-in">
-          <p class="text-gray-400 uppercase tracking-widest text-sm">Resultados para:</p>
-          <h1 class="text-3xl md:text-4xl font-extrabold text-atk-neon">"{{ filtroTexto }}"</h1>
-          <button @click="filtroTexto = ''; abaAtiva = 'torcedor'" class="mt-2 text-sm text-white hover:text-red-400 underline cursor-pointer">
+        <div v-if="filtroTexto || filtroTime" class="mb-6 animate-fade-in">
+          <p class="text-gray-400 uppercase tracking-widest text-sm">Exibindo resultados para:</p>
+          <h1 class="text-3xl md:text-4xl font-extrabold text-atk-neon">
+            "{{ filtroTexto || filtroTime }}"
+          </h1>
+          <button @click="filtroTexto = ''; filtroTime = ''; abaAtiva = 'torcedor'" class="mt-2 text-sm text-white hover:text-red-400 underline cursor-pointer">
             Limpar Busca
           </button>
         </div>
@@ -215,7 +237,7 @@ onUnmounted(() => {
           <p class="text-gray-400 text-sm md:text-base mb-8">Escolha sua versão favorita</p>
         </div>
 
-        <div v-if="!filtroTexto" class="flex flex-wrap justify-center gap-3">
+        <div v-if="!filtroTexto && !filtroTime" class="flex flex-wrap justify-center gap-3">
           <button 
             v-for="aba in ['torcedor', 'feminino', 'kids', 'player', 'retro']"
             :key="aba"
@@ -239,7 +261,8 @@ onUnmounted(() => {
           <span class="text-xs font-bold text-atk-neon uppercase tracking-widest hidden md:block">Filtrar Liga:</span>
           <select 
             v-model="filtroLiga" 
-            class="w-full md:w-auto bg-[#2a2a2a] text-white border border-white/10 rounded px-4 py-2 focus:border-atk-neon outline-none cursor-pointer uppercase text-xs font-bold tracking-wide transition hover:border-white/30"
+            :disabled="!!filtroTime || !!filtroTexto"
+            class="w-full md:w-auto bg-[#2a2a2a] text-white border border-white/10 rounded px-4 py-2 focus:border-atk-neon outline-none cursor-pointer uppercase text-xs font-bold tracking-wide transition hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="">Todas as Ligas</option>
             <option v-for="liga in ligasDisponiveis" :key="liga" :value="liga">{{ liga }}</option>
@@ -271,7 +294,7 @@ onUnmounted(() => {
         <p class="text-3xl mb-4">😶</p>
         <h3 class="text-xl font-bold text-white mb-2">Nenhum produto encontrado</h3>
         <p class="text-gray-400 text-sm">
-          {{ filtroTexto ? 'Tente verificar a ortografia.' : 'Tente limpar os filtros.' }}
+          {{ filtroTexto || filtroTime ? 'Tente verificar a ortografia ou limpar os filtros.' : 'Esta categoria está vazia no momento.' }}
         </p>
       </div>
 

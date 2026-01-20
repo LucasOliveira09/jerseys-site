@@ -14,28 +14,29 @@ const cart = useCartStore()
 // Estado do Dropdown de Usuário
 const showUserMenu = ref(false)
 
+// Lista simplificada (usaremos o Nome para a busca)
 const timesBrasileirao = [
-  { nome: 'Flamengo', slug: 'flamengo' },
-  { nome: 'Corinthians', slug: 'corinthians' },
-  { nome: 'Palmeiras', slug: 'palmeiras' },
-  { nome: 'São Paulo', slug: 'sao-paulo' },
-  { nome: 'Vasco', slug: 'vasco' },
-  { nome: 'Cruzeiro', slug: 'cruzeiro' },
-  { nome: 'Grêmio', slug: 'gremio' },
-  { nome: 'Internacional', slug: 'internacional' },
-  { nome: 'Atlético-MG', slug: 'atletico-mg' },
-  { nome: 'Santos', slug: 'santos' },
-  { nome: 'Botafogo', slug: 'botafogo' },
-  { nome: 'Fluminense', slug: 'fluminense' },
+  { nome: 'Flamengo' },
+  { nome: 'Corinthians' },
+  { nome: 'Palmeiras' },
+  { nome: 'São Paulo' },
+  { nome: 'Vasco' },
+  { nome: 'Cruzeiro' },
+  { nome: 'Grêmio' },
+  { nome: 'Internacional' },
+  { nome: 'Atlético-MG' },
+  { nome: 'Santos' },
+  { nome: 'Botafogo' },
+  { nome: 'Fluminense' },
 ]
 
 const ligasInternacionais = [
-  { nome: 'Premier League', slug: 'premier-league' },
-  { nome: 'La Liga', slug: 'la-liga' },
-  { nome: 'Bundesliga', slug: 'bundesliga' },
-  { nome: 'Serie A', slug: 'serie-a' },
-  { nome: 'Ligue 1', slug: 'ligue-1' },
-  { nome: 'Outros', slug: 'outros' },
+  { nome: 'Premier League' },
+  { nome: 'La Liga' },
+  { nome: 'Bundesliga' },
+  { nome: 'Serie A' },
+  { nome: 'Ligue 1' },
+  { nome: 'Outros' }, // Garanta que no banco existam produtos com liga 'Outros' ou remova
 ]
 
 onMounted(async () => {
@@ -50,13 +51,14 @@ onMounted(async () => {
 async function handleLogout() {
   await supabase.auth.signOut()
   open.value = false 
-  showUserMenu.value = false // Fecha o dropdown
+  showUserMenu.value = false 
   router.push('/login')
 }
 
 function realizarBusca() {
   if (searchQuery.value.trim()) {
-    router.push({ path: '/produtos', query: { q: searchQuery.value } })
+    // Usa o parâmetro 'time' que já configuramos no Catálogo para buscar por nome
+    router.push({ path: '/produtos', query: { time: searchQuery.value } })
     searchOpen.value = false 
     searchQuery.value = ''
   }
@@ -68,8 +70,8 @@ function realizarBusca() {
     
     <div class="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center">
       
-      <RouterLink to="/" class="font-extrabold text-2xl tracking-tighter text-white flex items-center gap-1 group z-20">
-        LGA<span class="text-atk-neon group-hover:shadow-[0_0_10px_#00FFC2] transition-all duration-300">FUT</span> ⚽
+      <RouterLink to="/" class="font-extrabold text-2xl tracking-tighter text-white flex items-center gap-1 group z-20 ">
+        <img src="../../public/logo.png" class="w-14 mr-3 " alt=""><span class=" group-hover:text-atk-neon transition-all duration-1000">LGA</span><span class="text-atk-neon transition-all duration-300">SPORTS</span> 
       </RouterLink>
 
       <nav class="hidden md:flex h-full items-center gap-1 z-20">
@@ -81,7 +83,7 @@ function realizarBusca() {
             Brasileirão <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3 transition-transform group-hover:rotate-180"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
           </button>
           <div class="absolute top-full left-0 w-[500px] bg-[#1a1a1a] border-t-2 border-atk-neon shadow-2xl rounded-b-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 p-6 grid grid-cols-3 gap-y-3 gap-x-6 z-40">
-             <RouterLink v-for="time in timesBrasileirao" :key="time.slug" :to="`/produtos?liga=${time.slug}`" class="text-gray-300 hover:text-atk-neon text-sm font-medium transition flex items-center gap-2 hover:translate-x-1 duration-200">
+             <RouterLink v-for="time in timesBrasileirao" :key="time.nome" :to="{ path: '/produtos', query: { time: time.nome } }" class="text-gray-300 hover:text-atk-neon text-sm font-medium transition flex items-center gap-2 hover:translate-x-1 duration-200">
                <span class="w-1.5 h-1.5 bg-atk-neon rounded-full opacity-0 group-hover:opacity-100 transition"></span> {{ time.nome }}
              </RouterLink>
           </div>
@@ -92,7 +94,7 @@ function realizarBusca() {
             Ligas Int. <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3 transition-transform group-hover:rotate-180"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
           </button>
           <div class="absolute top-full left-0 w-64 bg-[#1a1a1a] border-t-2 border-atk-neon shadow-2xl rounded-b-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 py-4 z-40 flex flex-col">
-            <RouterLink v-for="liga in ligasInternacionais" :key="liga.slug" :to="`/produtos?liga=${liga.slug}`" class="px-6 py-2.5 text-gray-300 hover:text-atk-dark hover:bg-atk-neon text-sm font-bold transition uppercase tracking-wide">{{ liga.nome }}</RouterLink>
+            <RouterLink v-for="liga in ligasInternacionais" :key="liga.nome" :to="{ path: '/produtos', query: { liga: liga.nome } }" class="px-6 py-2.5 text-gray-300 hover:text-atk-dark hover:bg-atk-neon text-sm font-bold transition uppercase tracking-wide">{{ liga.nome }}</RouterLink>
           </div>
         </div>
 
@@ -113,10 +115,7 @@ function realizarBusca() {
         </RouterLink>
 
         <div v-if="user" class="hidden md:block relative">
-          <button 
-            @click="showUserMenu = !showUserMenu" 
-            class="p-2 rounded-full hover:bg-white/10 text-white hover:text-atk-neon transition border border-transparent hover:border-atk-neon"
-          >
+          <button @click="showUserMenu = !showUserMenu" class="p-2 rounded-full hover:bg-white/10 text-white hover:text-atk-neon transition border border-transparent hover:border-atk-neon">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             </svg>
@@ -128,28 +127,14 @@ function realizarBusca() {
               <p class="text-sm font-bold text-white truncate">{{ user.email }}</p>
             </div>
             
-            <RouterLink 
-              to="/perfil" 
-              @click="showUserMenu = false"
-              class="block px-4 py-3 text-sm text-gray-300 hover:bg-atk-neon hover:text-atk-dark transition"
-            >
-              👤 Minha Conta
-            </RouterLink>
+            <RouterLink to="/perfil" @click="showUserMenu = false" class="block px-4 py-3 text-sm text-gray-300 hover:bg-atk-neon hover:text-atk-dark transition">👤 Minha Conta</RouterLink>
             
-            <button 
-              @click="handleLogout" 
-              class="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition border-t border-white/5"
-            >
-              🚪 Sair
-            </button>
+            <button @click="handleLogout" class="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition border-t border-white/5">🚪 Sair</button>
           </div>
-
           <div v-if="showUserMenu" @click="showUserMenu = false" class="fixed inset-0 z-40"></div>
         </div>
         
-        <RouterLink v-else to="/login" class="hidden md:block bg-atk-neon text-atk-dark px-5 py-2 rounded font-extrabold text-sm uppercase tracking-wide hover:bg-white transition hover:shadow-[0_0_15px_rgba(0,255,194,0.4)]">
-          Entrar
-        </RouterLink>
+        <RouterLink v-else to="/login" class="hidden md:block bg-atk-neon text-atk-dark px-5 py-2 rounded font-extrabold text-sm uppercase tracking-wide hover:bg-white transition hover:shadow-[0_0_15px_rgba(0,255,194,0.4)]">Entrar</RouterLink>
 
         <button class="md:hidden text-white text-2xl" @click="open = !open">☰</button>
       </div>
@@ -191,10 +176,15 @@ function realizarBusca() {
 
          <RouterLink to="/" @click="open = false" class="py-3 px-4 text-gray-300 font-bold uppercase border-b border-gray-800 hover:text-atk-neon">Início</RouterLink>
          <RouterLink to="/produtos" @click="open = false" class="py-3 px-4 text-gray-300 font-bold uppercase border-b border-gray-800 hover:text-atk-neon">Catálogo Completo</RouterLink>
+         
+         <p class="py-3 px-4 text-atk-neon font-bold text-xs uppercase mt-2">Brasileirão</p>
+         <div class="grid grid-cols-2 gap-2 px-4 mb-4">
+            <RouterLink v-for="time in timesBrasileirao" :key="time.nome" :to="{ path: '/produtos', query: { time: time.nome } }" @click="open = false" class="text-sm text-gray-400 hover:text-white">{{ time.nome }}</RouterLink>
+         </div>
+
          <RouterLink to="/carrinho" @click="open = false" class="py-3 px-4 text-gray-300 font-bold uppercase border-b border-gray-800 hover:text-atk-neon flex justify-between">
-            Carrinho <span class="text-atk-neon">{{ cart.quantidade }}</span>
+           Carrinho <span class="text-atk-neon">{{ cart.quantidade }}</span>
          </RouterLink>
-         <RouterLink to="/admin" @click="open = false" class="py-3 px-4 text-gray-500 font-bold uppercase border-b border-gray-800 text-xs mt-4">Área Admin</RouterLink>
        </div>
     </div>
   </header>
