@@ -169,7 +169,7 @@ function realizarBusca() {
 
          <div v-else class="mb-4 grid grid-cols-2 gap-3">
             <RouterLink to="/login" @click="open = false" class="text-center bg-atk-neon text-atk-dark py-3 rounded font-bold uppercase text-sm">Entrar</RouterLink>
-            <RouterLink to="/cadastro" @click="open = false" class="text-center border border-white/20 text-white py-3 rounded font-bold uppercase text-sm">Cadastrar</RouterLink>
+            <RouterLink to="/registro" @click="open = false" class="text-center border border-white/20 text-white py-3 rounded font-bold uppercase text-sm">Cadastrar</RouterLink>
          </div>
 
          <div class="h-px bg-white/10 my-2"></div>
