@@ -14,10 +14,8 @@ const orders = ref([])
 const produtos = ref([])
 const searchProdutos = ref('')
 
-// --- NOVO: CONTROLE DE SELEÇÃO DE PEDIDOS ---
+// --- CONTROLE DE SELEÇÃO DE PEDIDOS ---
 const selectedOrderIds = ref([])
-
-// Checkbox Mestre (Selecionar Tudo)
 const allSelected = computed({
   get: () => orders.value.length > 0 && selectedOrderIds.value.length === orders.value.length,
   set: (val) => {
@@ -26,34 +24,20 @@ const allSelected = computed({
   }
 })
 
-// Função de Exclusão em Massa
 async function excluirPedidosSelecionados() {
   if (selectedOrderIds.value.length === 0) return
-
   const result = await Swal.fire({
-    title: 'Tem certeza?',
-    text: `Você vai apagar ${selectedOrderIds.value.length} pedido(s). Isso não pode ser desfeito.`,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
-    confirmButtonText: 'Sim, apagar!',
-    background: '#151515', color: '#fff'
+    title: 'Tem certeza?', text: `Apagar ${selectedOrderIds.value.length} pedido(s)?`, icon: 'warning',
+    showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Sim, apagar!', background: '#151515', color: '#fff'
   })
-
   if (result.isConfirmed) {
     try {
-      const { error } = await supabase
-        .from('orders')
-        .delete()
-        .in('id', selectedOrderIds.value)
-
+      const { error } = await supabase.from('orders').delete().in('id', selectedOrderIds.value)
       if (error) throw error
-
       Swal.fire({ title: 'Apagado!', icon: 'success', timer: 1000, showConfirmButton: false, background: '#151515', color: '#fff' })
-      selectedOrderIds.value = [] // Limpa seleção
-      await buscarPedidos() // Recarrega lista
-      calcularStats() // Recalcula dashboard
+      selectedOrderIds.value = [] 
+      await buscarPedidos()
+      calcularStats()
     } catch (e) {
       Swal.fire({ title: 'Erro', text: e.message, icon: 'error', background: '#151515', color: '#fff' })
     }
@@ -91,7 +75,10 @@ onMounted(async () => {
 async function verificarAdmin() {
   const { data: { user } } = await supabase.auth.getUser()
   const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
-  if (!user || user.email !== adminEmail) router.push('/')
+  
+  if (!user || user.email !== adminEmail) {
+    router.push('/')
+  }
 }
 
 async function carregarTudo() {
@@ -109,6 +96,7 @@ async function buscarPedidos() {
     .order('created_at', { ascending: false })
   
   if (!error) orders.value = data
+  else console.error("Erro buscar pedidos:", error)
 }
 
 function calcularStats() {
@@ -131,7 +119,8 @@ function verDetalhesPedido(order) {
 
 // --- PRODUTOS ---
 async function buscarProdutos() {
-  const { data } = await supabase.from('produtos').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('produtos').select('*').order('created_at', { ascending: false })
+  if (error) console.error("Erro buscar produtos:", error)
   produtos.value = data || []
 }
 
@@ -155,26 +144,74 @@ function abrirModalProduto(produto = null) {
 }
 
 function gerarSlug() {
-  if (!editandoProduto.value) formProduto.value.slug = formProduto.value.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').replace(/[^\w\-]+/g, '')
+  if (!editandoProduto.value && formProduto.value.name) {
+    formProduto.value.slug = formProduto.value.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').replace(/[^\w\-]+/g, '')
+  }
 }
 
 function addFotoNaGaleria() { if (novaFotoUrl.value) { formProduto.value.images_gallery.push(novaFotoUrl.value); novaFotoUrl.value = '' } }
 function removerFotoGaleria(index) { formProduto.value.images_gallery.splice(index, 1) }
 
+// --- 🚨 FUNÇÃO DE SALVAR BLINDADA 🚨 ---
 async function salvarProduto() {
   salvandoProduto.value = true
+  
   try {
-    const payload = { ...formProduto.value }
-    delete payload.id
-    payload.images_gallery = payload.images_gallery.filter(x => x)
-    if (!payload.stock) payload.stock = {}
-    if (editandoProduto.value) await supabase.from('produtos').update(payload).eq('id', formProduto.value.id)
-    else await supabase.from('produtos').insert(payload)
+    // 1. Prepara o Payload (Limpa os dados)
+    const payload = { 
+        name: formProduto.value.name,
+        description: formProduto.value.description || '',
+        image_cover: formProduto.value.image_cover,
+        category: formProduto.value.category,
+        league: formProduto.value.league,
+        slug: formProduto.value.slug,
+        active: formProduto.value.active,
+        is_featured: formProduto.value.is_featured,
+        is_queridinha: formProduto.value.is_queridinha
+    }
+    
+    // Tratamento de Arrays e Objetos
+    payload.images_gallery = Array.isArray(formProduto.value.images_gallery) ? formProduto.value.images_gallery.filter(x => x) : []
+    payload.stock = formProduto.value.stock || {}
+    
+    // Converte para número (CRÍTICO)
+    payload.price_cost = Number(formProduto.value.price_cost) || 0
+    payload.price_sale = Number(formProduto.value.price_sale) || 0
+
+    console.log("🟡 Tentando salvar:", payload)
+
+    let error = null
+
+    if (editandoProduto.value) {
+        // UPDATE
+        const { error: err } = await supabase.from('produtos').update(payload).eq('id', formProduto.value.id)
+        error = err
+    } else {
+        // INSERT
+        const { error: err } = await supabase.from('produtos').insert([payload]) // Note os colchetes []
+        error = err
+    }
+
+    if (error) {
+        console.error("🔴 ERRO SUPABASE:", error)
+        throw error
+    }
+
     await buscarProdutos()
     showProductModal.value = false
     Swal.fire({ icon: 'success', title: 'Salvo!', timer: 1000, showConfirmButton: false, background: '#151515', color: '#fff' })
-  } catch (e) { Swal.fire({ icon: 'error', title: 'Erro', text: e.message }) } 
-  finally { salvandoProduto.value = false }
+
+  } catch (e) { 
+    console.error("🔴 CATCH FINAL:", e)
+    Swal.fire({ 
+        icon: 'error', 
+        title: 'Erro ao Salvar', 
+        text: e.message || 'Erro desconhecido. Abra o console (F12).',
+        background: '#151515', color: '#fff' 
+    }) 
+  } finally { 
+    salvandoProduto.value = false 
+  }
 }
 
 async function toggleProduto(produto, campo) {
@@ -407,8 +444,8 @@ const statusClass = (s) => {
                <div><label class="text-xs text-gray-500 font-bold uppercase">Slug (URL)</label><input v-model="formProduto.slug" class="w-full bg-black border border-white/10 rounded p-3 text-gray-400 text-xs outline-none"></div>
              </div>
              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-               <div><label class="text-xs text-gray-500 font-bold uppercase">Custo (R$)</label><input v-model="formProduto.price_cost" type="number" step="0.01" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none focus:border-atk-neon"></div>
-               <div><label class="text-xs text-atk-neon font-bold uppercase">Venda (R$)</label><input v-model="formProduto.price_sale" type="number" step="0.01" class="w-full bg-black border border-atk-neon/50 rounded p-3 text-atk-neon font-bold outline-none focus:border-atk-neon"></div>
+               <div><label class="text-xs text-gray-500 font-bold uppercase">Custo (R$)</label><input v-model.number="formProduto.price_cost" type="number" step="0.01" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none focus:border-atk-neon"></div>
+               <div><label class="text-xs text-atk-neon font-bold uppercase">Venda (R$)</label><input v-model.number="formProduto.price_sale" type="number" step="0.01" class="w-full bg-black border border-atk-neon/50 rounded p-3 text-atk-neon font-bold outline-none focus:border-atk-neon"></div>
                <div><label class="text-xs text-gray-500 font-bold uppercase">Categoria</label><select v-model="formProduto.category" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none"><option v-for="c in categorias" :key="c" :value="c">{{ c }}</option></select></div>
                <div><label class="text-xs text-gray-500 font-bold uppercase">Liga</label><select v-model="formProduto.league" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none"><option v-for="l in ligas" :key="l" :value="l">{{ l }}</option></select></div>
              </div>

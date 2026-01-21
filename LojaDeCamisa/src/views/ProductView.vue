@@ -62,7 +62,7 @@ const tabelasMedidas = {
   infantil: { titulo: 'Kit Infantil', headers: ['Tam.', 'Idade', 'Largura', 'Comp.'], rows: [{ t: '16', i: '3-4 anos', l: '35', c: '44' }, { t: '22', i: '6-7 anos', l: '41', c: '53' }, { t: '28', i: '12-13 anos', l: '47', c: '62' }] }
 }
 
-// LÓGICA NOVA: Verifica se é produto especial (Kids, Retro, Player)
+// Verifica se é produto especial (Kids, Retro, Player)
 const ehVersaoUnica = computed(() => {
   if (!produto.value) return false
   const cat = (produto.value.category || '').toLowerCase()
@@ -73,11 +73,19 @@ const ehVersaoUnica = computed(() => {
          nome.includes('player') || nome.includes('jogador')
 })
 
+// Nova lógica para detectar se deve mostrar o aviso de jogador
+const ehVersaoJogador = computed(() => {
+  if (!produto.value) return false
+  const nome = produto.value.name.toLowerCase()
+  // É jogador se selecionou manualmente OU se o nome do produto já diz que é Player/Jogador
+  return versaoSelecionada.value === 'jogador' || nome.includes('player') || nome.includes('jogador')
+})
+
 const tabelaAtiva = computed(() => {
   if (!produto.value) return tabelasMedidas.torcedor
   const cat = (produto.value.category || '').toLowerCase()
   if (cat.includes('kid') || cat.includes('infantil')) return tabelasMedidas.infantil
-  if (versaoSelecionada.value === 'jogador') return tabelasMedidas.jogador
+  if (ehVersaoJogador.value) return tabelasMedidas.jogador
   return tabelasMedidas.torcedor
 })
 
@@ -136,12 +144,12 @@ async function buscarRelacionados(liga, termoNome, categoria, idAtual) {
   relacionados.value = data || []
 }
 
-// --- PREÇO (ATUALIZADO COM TRAVA) ---
+// --- PREÇO ---
 const precoFinal = computed(() => {
   if (!produto.value) return 0
   let total = Number(produto.value.price_sale) > 0 ? Number(produto.value.price_sale) : Number(produto.value.price)
 
-  // Só adiciona valor de jogador se NÃO for versão única
+  // Só adiciona valor de jogador se NÃO for versão única (pois versão única já tem o preço cheio no cadastro)
   if (!ehVersaoUnica.value && versaoSelecionada.value === 'jogador') {
     total += 40.00 
   }
@@ -158,7 +166,6 @@ function adicionarAoCarrinho() {
 
   const itemParaCarrinho = {
     ...produto.value, price_sale: precoFinal.value, 
-    // Se for versão única, força 'torcedor' (ou padrão) para evitar erro no banco/texto
     versao: ehVersaoUnica.value ? 'padrão' : versaoSelecionada.value,
     patch: patchSelecionado.value !== 'Nenhum' ? patchSelecionado.value : null,
     personalizacao: querPersonalizar.value ? { nome: nomePersonalizado.value.toUpperCase(), numero: numeroPersonalizado.value } : null
@@ -176,7 +183,17 @@ function scrollRelacionados(direcao) {
   if (relatedContainer.value) relatedContainer.value.scrollBy({ left: direcao === 'dir' ? 300 : -300, behavior: 'smooth' })
 }
 async function enviarAvaliacao() {
-  // ... (mesma lógica anterior)
+  if (!user.value) { router.push('/login'); return }
+  if (!novaAvaliacao.value.comment.trim()) { showAlert('Ops...', 'Escreva um comentário.', 'warning'); return }
+  enviandoReview.value = true
+  try {
+    const { error } = await supabase.from('reviews').insert({ product_id: produto.value.id, user_id: user.value.id, rating: novaAvaliacao.value.rating, comment: novaAvaliacao.value.comment })
+    if (error) throw error
+    await carregarProduto() 
+    showAlert('Sucesso!', 'Avaliação publicada.', 'success')
+    novaAvaliacao.value.comment = ''; novaAvaliacao.value.rating = 5
+  } catch (err) { showAlert('Erro', 'Não foi possível enviar.', 'error') } 
+  finally { enviandoReview.value = false }
 }
 const todasImagens = computed(() => {
   if (!produto.value) return []
@@ -275,6 +292,16 @@ onMounted(() => carregarProduto())
             </div>
           </div>
 
+          <div v-if="ehVersaoJogador" class="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded flex items-start gap-3 animate-fade-in-down">
+             <div class="text-xl">⚠️</div>
+             <div>
+                <p class="text-yellow-500 font-bold text-xs uppercase mb-1">Atenção: Modelagem Justa</p>
+                <p class="text-gray-400 text-xs leading-relaxed">
+                   A versão Jogador (Player) é mais colada ao corpo. Recomendamos pedir <strong>um tamanho maior</strong> que o habitual.
+                </p>
+             </div>
+          </div>
+
           <div>
             <div class="flex justify-between items-center mb-3">
               <h3 class="font-bold text-white uppercase tracking-wider text-sm">2. Tamanho</h3>
@@ -312,7 +339,61 @@ onMounted(() => carregarProduto())
         </div>
       </div>
 
+      <div class="max-w-7xl mx-auto px-4 mb-20">
+        <h2 class="text-2xl font-bold uppercase mb-8 border-b border-white/10 pb-4 flex items-center gap-2">Avaliações dos Torcedores <span class="text-sm bg-white/10 px-2 py-1 rounded text-atk-neon font-mono">{{ reviews.length }}</span></h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="bg-[#151515] p-6 rounded-xl border border-white/10 h-fit">
+            <h3 class="font-bold text-white mb-4">Deixe sua opinião</h3>
+            <div v-if="user">
+              <div class="flex gap-1 mb-4"><button v-for="star in 5" :key="star" @click="novaAvaliacao.rating = star" class="text-2xl transition hover:scale-110" :class="star <= novaAvaliacao.rating ? 'text-yellow-400' : 'text-gray-600'">★</button></div>
+              <textarea v-model="novaAvaliacao.comment" rows="4" placeholder="O que achou do manto?" class="w-full bg-black border border-white/20 rounded p-3 text-white text-sm mb-4 outline-none focus:border-atk-neon"></textarea>
+              <button @click="enviarAvaliacao" :disabled="enviandoReview" class="w-full bg-white text-black font-bold py-2 rounded hover:bg-atk-neon hover:text-black transition uppercase text-xs">{{ enviandoReview ? 'Enviando...' : 'Publicar Avaliação' }}</button>
+            </div>
+            <div v-else class="text-center py-6"><p class="text-gray-400 text-sm mb-4">Faça login para avaliar este produto.</p><router-link to="/login" class="text-atk-neon font-bold border border-atk-neon px-4 py-2 rounded uppercase text-xs hover:bg-atk-neon hover:text-black transition">Entrar</router-link></div>
+          </div>
+          <div class="md:col-span-2 space-y-4">
+            <div v-if="reviews.length === 0" class="text-gray-500 italic">Seja o primeiro a avaliar este manto!</div>
+            <div v-for="review in reviews" :key="review.id" class="bg-[#1a1a1a] p-4 rounded-lg border border-white/5 animate-fade-in">
+              <div class="flex justify-between items-start mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-xs text-atk-neon">{{ review.profiles?.full_name ? review.profiles.full_name[0].toUpperCase() : '?' }}</div>
+                  <div><p class="text-sm font-bold text-white">{{ review.profiles?.full_name || 'Torcedor Anônimo' }}</p><div class="flex text-yellow-400 text-xs"><span v-for="n in review.rating" :key="n">★</span></div></div>
+                </div>
+                <span class="text-[10px] text-gray-600">{{ new Date(review.created_at).toLocaleDateString() }}</span>
+              </div>
+              <p class="text-gray-300 text-sm leading-relaxed">"{{ review.comment }}"</p>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div class="max-w-7xl mx-auto px-4 mb-20 grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="bg-[#151515] rounded-xl overflow-hidden border border-white/5 relative h-80 md:h-auto">
+          <img src="https://images.unsplash.com/photo-1579952363873-27f3bade8f55?q=80&w=2070" class="w-full h-full object-cover grayscale opacity-40" />
+          <div class="absolute inset-0 p-8 flex flex-col justify-end bg-gradient-to-t from-black via-black/50 to-transparent">
+              <h3 class="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">Tecnologia de <span class="text-atk-neon">Elite</span></h3>
+              <p class="text-gray-300 text-sm leading-relaxed">Tecido respirável de alta performance com tecnologia DRI-FIT, garantindo frescor e leveza. Escudo bordado em alta definição e costuras reforçadas.</p>
+          </div>
+        </div>
+        <div class="bg-[#151515] rounded-xl border border-white/5 p-8">
+           <h3 class="text-xl font-bold text-white mb-6 uppercase flex items-center gap-2">Cuidados com o Manto</h3>
+           <div class="space-y-4">
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">💧</div><div><p class="font-bold text-sm text-white">Lavar à mão</p><p class="text-xs text-gray-500">Água fria sempre.</p></div></div>
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🚫</div><div><p class="font-bold text-sm text-white">Não usar alvejante</p><p class="text-xs text-gray-500">Químicos danificam.</p></div></div>
+             <div class="flex items-start gap-4"><div class="bg-white/5 p-2 rounded text-2xl">🔥</div><div><p class="font-bold text-sm text-white">Não passar ferro na estampa</p><p class="text-xs text-gray-500">Se precisar, use do avesso.</p></div></div>
+           </div>
+        </div>
+      </div>
+
+      <div v-if="relacionados.length > 0" class="max-w-7xl mx-auto px-4 border-t border-white/10 pt-12 relative group/carousel">
+        <h3 class="text-2xl font-extrabold uppercase tracking-tighter mb-8 text-center flex items-center justify-center gap-3">Produtos <span class="text-atk-neon">Relacionados:</span></h3>
+        <button @click="scrollRelacionados('esq')" class="hidden md:block absolute left-0 top-[60%] z-10 bg-black/80 p-3 rounded-full border border-white/10 hover:bg-atk-neon hover:text-black transition opacity-0 group-hover/carousel:opacity-100">❮</button>
+        <button @click="scrollRelacionados('dir')" class="hidden md:block absolute right-0 top-[60%] z-10 bg-black/80 p-3 rounded-full border border-white/10 hover:bg-atk-neon hover:text-black transition opacity-0 group-hover/carousel:opacity-100">❯</button>
+        <div ref="relatedContainer" class="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 no-scrollbar scroll-smooth px-2">
+          <div v-for="item in relacionados" :key="item.id" class="w-64 flex-shrink-0 snap-center"><ProductCard :product="item" /></div>
+        </div>
+      </div>
+    </div>
 
     <div v-if="showGuiaMedidas" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showGuiaMedidas = false">
        <div class="bg-[#1a1a1a] p-6 rounded-xl max-w-2xl w-full border border-atk-neon/30 shadow-2xl relative animate-fade-in-down">
