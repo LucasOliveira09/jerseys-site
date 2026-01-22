@@ -28,9 +28,6 @@ const precoOriginal = computed(() => {
   ) {
     return 199.90
   }
-
-  // 3. Regra Padrão (Torcedor Comum)
-  // Define um preço base para que o desconto pareça real (ex: De 189 por 139)
   return 189.90
 })
 </script>
