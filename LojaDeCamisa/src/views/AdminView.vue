@@ -319,21 +319,59 @@ const statusClass = (s) => {
         </div>
 
         <div v-if="activeTab === 'produtos'" class="animate-fade-in">
-           <div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold uppercase">Catálogo</h2><button @click="abrirModalProduto()" class="bg-atk-neon text-atk-dark px-4 py-2 rounded font-bold uppercase text-sm hover:scale-105 transition">+ Novo Produto</button></div>
+           <div class="flex justify-between items-center mb-6">
+             <div class="flex items-center gap-4">
+               <h2 class="text-3xl font-bold uppercase">Catálogo</h2>
+               <div class="relative">
+                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+                 <input 
+                   v-model="searchProdutos" 
+                   type="text" 
+                   placeholder="Buscar nome..." 
+                   class="bg-[#1a1a1a] border border-white/10 rounded-full pl-10 pr-4 py-2 text-white outline-none focus:border-atk-neon w-64 transition-all focus:w-80" 
+                 />
+               </div>
+             </div>
+             
+             <button @click="abrirModalProduto()" class="bg-atk-neon text-atk-dark px-4 py-2 rounded font-bold uppercase text-sm hover:scale-105 transition flex items-center gap-2">
+               <span>+</span> Novo Produto
+             </button>
+           </div>
+
            <div class="bg-[#1a1a1a] rounded-xl border border-white/10 overflow-hidden">
              <table class="w-full text-left text-sm">
-               <thead><tr class="bg-[#202020] text-gray-400 uppercase text-xs"><th class="p-4">Produto</th><th class="p-4">Preço</th><th class="p-4 text-center">Home?</th><th class="p-4 text-center">Ativo</th><th class="p-4 text-right">Ação</th></tr></thead>
+               <thead>
+                 <tr class="bg-[#202020] text-gray-400 uppercase text-xs">
+                   <th class="p-4">Produto</th>
+                   <th class="p-4">Preço</th>
+                   <th class="p-4 text-center">Home?</th>
+                   <th class="p-4 text-center">Ativo</th>
+                   <th class="p-4 text-right">Ação</th>
+                 </tr>
+               </thead>
                <tbody>
-                 <tr v-for="prod in productosFiltrados" :key="prod.id" class="border-b border-white/5">
-                   <td class="p-4 flex items-center gap-2"><img :src="prod.image_cover" class="w-8 h-8 rounded object-contain bg-white/5">{{ prod.name }}</td>
-                   <td class="p-4 font-mono">{{ formatMoney(prod.price_sale) }}</td>
+                 <tr v-for="prod in productosFiltrados" :key="prod.id" class="border-b border-white/5 hover:bg-white/5 transition">
+                   <td class="p-4 flex items-center gap-3">
+                     <img :src="prod.image_cover" class="w-10 h-10 rounded object-contain bg-white/5 border border-white/10">
+                     <span class="font-bold">{{ prod.name }}</span>
+                   </td>
+                   <td class="p-4 font-mono text-atk-neon">{{ formatMoney(prod.price_sale) }}</td>
                    <td class="p-4 text-center space-x-1">
-                      <span v-if="prod.is_queridinha" class="text-[10px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1 rounded">Queridinha</span>
-                      <span v-if="prod.is_featured" class="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1 rounded">Destaque</span>
+                      <span v-if="prod.is_queridinha" class="text-[10px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1.5 py-0.5 rounded">Queridinha</span>
+                      <span v-if="prod.is_featured" class="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded">Destaque</span>
                       <span v-if="!prod.is_queridinha && !prod.is_featured" class="text-gray-600">-</span>
                    </td>
-                   <td class="p-4 text-center"><button @click="toggleProduto(prod, 'active')" class="w-8 h-4 rounded-full relative transition-colors" :class="prod.active ? 'bg-green-500' : 'bg-gray-700'"><span class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform" :class="prod.active ? 'translate-x-4' : ''"></span></button></td>
-                   <td class="p-4 text-right"><button @click="abrirModalProduto(prod)" class="text-gray-400 hover:text-white">✏️ Editar</button></td>
+                   <td class="p-4 text-center">
+                     <button @click="toggleProduto(prod, 'active')" class="w-8 h-4 rounded-full relative transition-colors" :class="prod.active ? 'bg-green-500' : 'bg-gray-700'">
+                       <span class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform" :class="prod.active ? 'translate-x-4' : ''"></span>
+                     </button>
+                   </td>
+                   <td class="p-4 text-right">
+                     <button @click="abrirModalProduto(prod)" class="text-gray-400 hover:text-white bg-white/5 px-3 py-1 rounded hover:bg-white/10 transition">✏️ Editar</button>
+                   </td>
+                 </tr>
+                 <tr v-if="productosFiltrados.length === 0">
+                   <td colspan="5" class="p-8 text-center text-gray-500">Nenhum produto encontrado com esse nome.</td>
                  </tr>
                </tbody>
              </table>
