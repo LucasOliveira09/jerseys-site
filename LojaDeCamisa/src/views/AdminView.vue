@@ -64,7 +64,15 @@ const stockForm = ref({})
 const formProduto = ref({
   id: null, name: '', description: '', price_cost: 0, price_sale: 0,
   image_cover: '', images_gallery: [], category: 'Torcedor', league: 'Brasileirão',
-  slug: '', active: true, is_featured: false, is_queridinha: false, stock: {} 
+  slug: '', active: true, 
+  // NOVOS CAMPOS DE DESTAQUE
+  is_featured: false, 
+  is_queridinha: false, // Mantido para compatibilidade, mas pode ser substituído por is_trending
+  is_trending: false,
+  is_new_arrival: false,
+  is_brasileirao_featured: false,
+  is_selecoes_featured: false,
+  stock: {} 
 })
 
 onMounted(async () => {
@@ -136,9 +144,29 @@ function abrirModalProduto(produto = null) {
           if (limp) galeria = limp.split(',').map(s => s.replace(/"/g, '').trim())
       }
     } catch(e) { galeria = [] }
-    formProduto.value = { ...produto, images_gallery: galeria, stock: produto.stock || {}, is_featured: !!produto.is_featured, is_queridinha: !!produto.is_queridinha }
+    
+    // Mapeia os campos existentes e garante booleanos
+    formProduto.value = { 
+        ...produto, 
+        images_gallery: galeria, 
+        stock: produto.stock || {}, 
+        is_featured: !!produto.is_featured, 
+        is_queridinha: !!produto.is_queridinha,
+        is_trending: !!produto.is_trending,
+        is_new_arrival: !!produto.is_new_arrival,
+        is_brasileirao_featured: !!produto.is_brasileirao_featured,
+        is_selecoes_featured: !!produto.is_selecoes_featured
+    }
   } else {
-    formProduto.value = { id: null, name: '', description: '', price_cost: 0, price_sale: 0, image_cover: '', images_gallery: [], category: 'Torcedor', league: 'Brasileirão', slug: '', active: true, is_featured: false, is_queridinha: false, stock: {} }
+    // Reset completo para novo produto
+    formProduto.value = { 
+        id: null, name: '', description: '', price_cost: 0, price_sale: 0, 
+        image_cover: '', images_gallery: [], category: 'Torcedor', league: 'Brasileirão', 
+        slug: '', active: true, 
+        is_featured: false, is_queridinha: false, is_trending: false, 
+        is_new_arrival: false, is_brasileirao_featured: false, is_selecoes_featured: false,
+        stock: {} 
+    }
   }
   showProductModal.value = true
 }
@@ -152,12 +180,11 @@ function gerarSlug() {
 function addFotoNaGaleria() { if (novaFotoUrl.value) { formProduto.value.images_gallery.push(novaFotoUrl.value); novaFotoUrl.value = '' } }
 function removerFotoGaleria(index) { formProduto.value.images_gallery.splice(index, 1) }
 
-// --- 🚨 FUNÇÃO DE SALVAR BLINDADA 🚨 ---
+// --- SALVAR PRODUTO ---
 async function salvarProduto() {
   salvandoProduto.value = true
   
   try {
-    // 1. Prepara o Payload (Limpa os dados)
     const payload = { 
         name: formProduto.value.name,
         description: formProduto.value.description || '',
@@ -166,49 +193,39 @@ async function salvarProduto() {
         league: formProduto.value.league,
         slug: formProduto.value.slug,
         active: formProduto.value.active,
+        // NOVOS CAMPOS NO PAYLOAD
         is_featured: formProduto.value.is_featured,
-        is_queridinha: formProduto.value.is_queridinha
+        is_queridinha: formProduto.value.is_queridinha,
+        is_trending: formProduto.value.is_trending,
+        is_new_arrival: formProduto.value.is_new_arrival,
+        is_brasileirao_featured: formProduto.value.is_brasileirao_featured,
+        is_selecoes_featured: formProduto.value.is_selecoes_featured
     }
     
-    // Tratamento de Arrays e Objetos
     payload.images_gallery = Array.isArray(formProduto.value.images_gallery) ? formProduto.value.images_gallery.filter(x => x) : []
     payload.stock = formProduto.value.stock || {}
-    
-    // Converte para número (CRÍTICO)
     payload.price_cost = Number(formProduto.value.price_cost) || 0
     payload.price_sale = Number(formProduto.value.price_sale) || 0
-
-    console.log("🟡 Tentando salvar:", payload)
 
     let error = null
 
     if (editandoProduto.value) {
-        // UPDATE
         const { error: err } = await supabase.from('produtos').update(payload).eq('id', formProduto.value.id)
         error = err
     } else {
-        // INSERT
-        const { error: err } = await supabase.from('produtos').insert([payload]) // Note os colchetes []
+        const { error: err } = await supabase.from('produtos').insert([payload])
         error = err
     }
 
-    if (error) {
-        console.error("🔴 ERRO SUPABASE:", error)
-        throw error
-    }
+    if (error) throw error
 
     await buscarProdutos()
     showProductModal.value = false
     Swal.fire({ icon: 'success', title: 'Salvo!', timer: 1000, showConfirmButton: false, background: '#151515', color: '#fff' })
 
   } catch (e) { 
-    console.error("🔴 CATCH FINAL:", e)
-    Swal.fire({ 
-        icon: 'error', 
-        title: 'Erro ao Salvar', 
-        text: e.message || 'Erro desconhecido. Abra o console (F12).',
-        background: '#151515', color: '#fff' 
-    }) 
+    console.error("Erro ao salvar:", e)
+    Swal.fire({ icon: 'error', title: 'Erro ao Salvar', text: e.message, background: '#151515', color: '#fff' }) 
   } finally { 
     salvandoProduto.value = false 
   }
@@ -291,7 +308,6 @@ const statusClass = (s) => {
                 🗑️ Apagar ({{ selectedOrderIds.length }})
              </button>
            </div>
-
            <div class="bg-[#1a1a1a] rounded-xl border border-white/10 overflow-hidden">
              <table class="w-full text-left text-sm">
                <thead>
@@ -324,54 +340,29 @@ const statusClass = (s) => {
                <h2 class="text-3xl font-bold uppercase">Catálogo</h2>
                <div class="relative">
                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
-                 <input 
-                   v-model="searchProdutos" 
-                   type="text" 
-                   placeholder="Buscar nome..." 
-                   class="bg-[#1a1a1a] border border-white/10 rounded-full pl-10 pr-4 py-2 text-white outline-none focus:border-atk-neon w-64 transition-all focus:w-80" 
-                 />
+                 <input v-model="searchProdutos" type="text" placeholder="Buscar nome..." class="bg-[#1a1a1a] border border-white/10 rounded-full pl-10 pr-4 py-2 text-white outline-none focus:border-atk-neon w-64 transition-all focus:w-80" />
                </div>
              </div>
-             
-             <button @click="abrirModalProduto()" class="bg-atk-neon text-atk-dark px-4 py-2 rounded font-bold uppercase text-sm hover:scale-105 transition flex items-center gap-2">
-               <span>+</span> Novo Produto
-             </button>
+             <button @click="abrirModalProduto()" class="bg-atk-neon text-atk-dark px-4 py-2 rounded font-bold uppercase text-sm hover:scale-105 transition flex items-center gap-2"><span>+</span> Novo Produto</button>
            </div>
-
            <div class="bg-[#1a1a1a] rounded-xl border border-white/10 overflow-hidden">
              <table class="w-full text-left text-sm">
-               <thead>
-                 <tr class="bg-[#202020] text-gray-400 uppercase text-xs">
-                   <th class="p-4">Produto</th>
-                   <th class="p-4">Preço</th>
-                   <th class="p-4 text-center">Home?</th>
-                   <th class="p-4 text-center">Ativo</th>
-                   <th class="p-4 text-right">Ação</th>
-                 </tr>
-               </thead>
+               <thead><tr class="bg-[#202020] text-gray-400 uppercase text-xs"><th class="p-4">Produto</th><th class="p-4">Preço</th><th class="p-4 text-center">Tags</th><th class="p-4 text-center">Ativo</th><th class="p-4 text-right">Ação</th></tr></thead>
                <tbody>
                  <tr v-for="prod in productosFiltrados" :key="prod.id" class="border-b border-white/5 hover:bg-white/5 transition">
-                   <td class="p-4 flex items-center gap-3">
-                     <img :src="prod.image_cover" class="w-10 h-10 rounded object-contain bg-white/5 border border-white/10">
-                     <span class="font-bold">{{ prod.name }}</span>
-                   </td>
+                   <td class="p-4 flex items-center gap-3"><img :src="prod.image_cover" class="w-10 h-10 rounded object-contain bg-white/5 border border-white/10"><span class="font-bold">{{ prod.name }}</span></td>
                    <td class="p-4 font-mono text-atk-neon">{{ formatMoney(prod.price_sale) }}</td>
-                   <td class="p-4 text-center space-x-1">
-                      <span v-if="prod.is_queridinha" class="text-[10px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1.5 py-0.5 rounded">Queridinha</span>
-                      <span v-if="prod.is_featured" class="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded">Destaque</span>
-                      <span v-if="!prod.is_queridinha && !prod.is_featured" class="text-gray-600">-</span>
-                   </td>
                    <td class="p-4 text-center">
-                     <button @click="toggleProduto(prod, 'active')" class="w-8 h-4 rounded-full relative transition-colors" :class="prod.active ? 'bg-green-500' : 'bg-gray-700'">
-                       <span class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform" :class="prod.active ? 'translate-x-4' : ''"></span>
-                     </button>
+                      <div class="flex justify-center gap-1 flex-wrap max-w-[150px]">
+                        <span v-if="prod.is_featured" class="text-[9px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1 rounded" title="Destaque Principal">⭐</span>
+                        <span v-if="prod.is_trending" class="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1 rounded" title="Queridinha (Trending)">💜</span>
+                        <span v-if="prod.is_new_arrival" class="text-[9px] bg-green-500/20 text-green-400 border border-green-500/30 px-1 rounded" title="Lançamento">🆕</span>
+                        <span v-if="prod.is_brasileirao_featured" class="text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1 rounded" title="Destaque BR">🇧🇷</span>
+                        <span v-if="prod.is_selecoes_featured" class="text-[9px] bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1 rounded" title="Destaque Seleções">🌍</span>
+                      </div>
                    </td>
-                   <td class="p-4 text-right">
-                     <button @click="abrirModalProduto(prod)" class="text-gray-400 hover:text-white bg-white/5 px-3 py-1 rounded hover:bg-white/10 transition">✏️ Editar</button>
-                   </td>
-                 </tr>
-                 <tr v-if="productosFiltrados.length === 0">
-                   <td colspan="5" class="p-8 text-center text-gray-500">Nenhum produto encontrado com esse nome.</td>
+                   <td class="p-4 text-center"><button @click="toggleProduto(prod, 'active')" class="w-8 h-4 rounded-full relative transition-colors" :class="prod.active ? 'bg-green-500' : 'bg-gray-700'"><span class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform" :class="prod.active ? 'translate-x-4' : ''"></span></button></td>
+                   <td class="p-4 text-right"><button @click="abrirModalProduto(prod)" class="text-gray-400 hover:text-white bg-white/5 px-3 py-1 rounded hover:bg-white/10 transition">✏️ Editar</button></td>
                  </tr>
                </tbody>
              </table>
@@ -487,16 +478,33 @@ const statusClass = (s) => {
                <div><label class="text-xs text-gray-500 font-bold uppercase">Categoria</label><select v-model="formProduto.category" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none"><option v-for="c in categorias" :key="c" :value="c">{{ c }}</option></select></div>
                <div><label class="text-xs text-gray-500 font-bold uppercase">Liga</label><select v-model="formProduto.league" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none"><option v-for="l in ligas" :key="l" :value="l">{{ l }}</option></select></div>
              </div>
-             <div class="bg-black/30 p-4 rounded-lg border border-white/5 grid grid-cols-2 gap-4">
-                <div class="flex items-center justify-between">
-                   <div><p class="font-bold text-sm text-white">Destaque Principal</p><p class="text-xs text-gray-500">Aparece no topo.</p></div>
-                   <button @click="formProduto.is_featured = !formProduto.is_featured" class="w-10 h-5 rounded-full relative transition-colors" :class="formProduto.is_featured ? 'bg-yellow-500' : 'bg-gray-700'"><span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="formProduto.is_featured ? 'translate-x-5' : ''"></span></button>
-                </div>
-                <div class="flex items-center justify-between">
-                   <div><p class="font-bold text-sm text-white">Queridinha da Semana</p><p class="text-xs text-gray-500">Sessão especial.</p></div>
-                   <button @click="formProduto.is_queridinha = !formProduto.is_queridinha" class="w-10 h-5 rounded-full relative transition-colors" :class="formProduto.is_queridinha ? 'bg-purple-500' : 'bg-gray-700'"><span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="formProduto.is_queridinha ? 'translate-x-5' : ''"></span></button>
+             
+             <div class="bg-black/30 p-4 rounded-lg border border-white/5">
+                <h4 class="text-sm font-bold text-white uppercase mb-4 border-b border-white/10 pb-2">Visibilidade na Home</h4>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                   <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5">
+                      <input type="checkbox" v-model="formProduto.is_featured" class="w-5 h-5 accent-yellow-500">
+                      <div><p class="font-bold text-xs text-white">⭐ Destaque Principal</p><p class="text-[10px] text-gray-500">Topo da página</p></div>
+                   </label>
+                   <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5">
+                      <input type="checkbox" v-model="formProduto.is_trending" class="w-5 h-5 accent-purple-500">
+                      <div><p class="font-bold text-xs text-white">💜 Queridinha</p><p class="text-[10px] text-gray-500">Sessão Trending</p></div>
+                   </label>
+                   <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5">
+                      <input type="checkbox" v-model="formProduto.is_new_arrival" class="w-5 h-5 accent-green-500">
+                      <div><p class="font-bold text-xs text-white">🆕 Lançamento</p><p class="text-[10px] text-gray-500">Sessão Novidades</p></div>
+                   </label>
+                   <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5">
+                      <input type="checkbox" v-model="formProduto.is_brasileirao_featured" class="w-5 h-5 accent-blue-500">
+                      <div><p class="font-bold text-xs text-white">🇧🇷 Destaque BR</p><p class="text-[10px] text-gray-500">Banner Brasileirão</p></div>
+                   </label>
+                   <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5">
+                      <input type="checkbox" v-model="formProduto.is_selecoes_featured" class="w-5 h-5 accent-orange-500">
+                      <div><p class="font-bold text-xs text-white">🌍 Destaque Seleções</p><p class="text-[10px] text-gray-500">Banner Seleções</p></div>
+                   </label>
                 </div>
              </div>
+
              <div>
                 <label class="text-xs text-gray-500 font-bold uppercase block mb-2">Capa Principal (URL)</label>
                 <input v-model="formProduto.image_cover" class="w-full bg-black border border-white/10 rounded p-3 text-white outline-none focus:border-atk-neon mb-4">
