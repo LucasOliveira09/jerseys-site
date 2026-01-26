@@ -226,7 +226,7 @@ async function criarPedido() {
       issuer_id: issuerId.value
     }
 
-    const { data, error } = await supabase.functions.invoke('processar-pagamento', { // Corrigido para nome da sua function
+    const { data, error } = await supabase.functions.invoke('criar-pix', { // Corrigido para nome da sua function
       body: payload
     })
 
