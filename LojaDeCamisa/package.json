@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mercadopago/sdk-js": "^0.0.3",
     "@supabase/supabase-js": "^2.90.1",
     "@vueuse/head": "^2.0.0",
     "pinia": "^3.0.4",
