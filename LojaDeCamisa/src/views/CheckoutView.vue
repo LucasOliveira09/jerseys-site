@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
 import { supabase } from '../supabase'
 import Swal from 'sweetalert2'
+import { loadMercadoPago } from '@mercadopago/sdk-js' // <--- IMPORTAÇÃO OFICIAL
 
 const router = useRouter()
 const cart = useCartStore()
@@ -32,7 +33,7 @@ const paymentMethodImg = ref(null)
 
 let mpInstance = null 
 
-// --- CÁLCULOS VISUAIS (Apenas para o cliente ver) ---
+// --- CÁLCULOS VISUAIS ---
 const subtotal = computed(() => cart.itens.reduce((acc, item) => acc + (item.price_sale * item.quantidade), 0))
 const valorFrete = computed(() => {
   const qtd = cart.quantidade
@@ -43,10 +44,8 @@ const valorFrete = computed(() => {
 })
 const totalBase = computed(() => subtotal.value + valorFrete.value)
 
-// Total estimado para exibir na tela (O backend recalcula isso para segurança)
 const totalGeralVisual = computed(() => {
   if (paymentMethod.value === 'pix') return totalBase.value * 0.98
-  
   if (paymentMethod.value === 'credit_card' && selectedInstallment.value) {
     return selectedInstallment.value.total_amount
   }
@@ -63,14 +62,13 @@ const showAlert = (title, text, icon = 'info') => {
   })
 }
 
-// --- SIMULADOR DE PARCELAS (Visual) ---
+// --- SIMULADOR DE PARCELAS ---
 const calcularParcelasPersonalizadas = (valorBase) => {
   const opcoes = []
   for (let i = 1; i <= 6; i++) {
     let taxa = 0
     let textoJuros = 'sem juros'
 
-    // Mesma lógica do backend para o cliente ver o valor real
     if (i === 3) taxa = 0.0579 
     if (i === 4) taxa = 0.0799 
     if (i === 5) taxa = 0.0819 
@@ -92,17 +90,7 @@ const calcularParcelasPersonalizadas = (valorBase) => {
   return opcoes
 }
 
-// --- LOADERS ---
-const loadMercadoPagoScript = () => {
-  return new Promise((resolve) => {
-    if (window.MercadoPago) { resolve(); return }
-    const script = document.createElement('script')
-    script.src = 'https://sdk.mercadopago.com/js/v2' // Use URL oficial
-    script.onload = () => resolve()
-    document.head.appendChild(script)
-  })
-}
-
+// --- INICIALIZAÇÃO ---
 onMounted(async () => {
   if (cart.quantidade === 0) { router.push('/carrinho'); return }
   
@@ -115,12 +103,25 @@ onMounted(async () => {
   
   if (profile.value.cpf) cardForm.value.identificationNumber = profile.value.cpf
 
-  await loadMercadoPagoScript()
-  // Use a chave pública do .env
-  const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY
-  if (!publicKey) { console.error("Falta VITE_MP_PUBLIC_KEY"); return }
+  // --- CARREGAMENTO OFICIAL DO SDK ---
+  try {
+    await loadMercadoPago()
+    
+    const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY
+    if (!publicKey) { 
+        console.error("ERRO: VITE_MP_PUBLIC_KEY não encontrada no .env")
+        return
+    }
+    
+    // Inicializa e coleta automaticamente o Device ID
+    mpInstance = new window.MercadoPago(publicKey, { 
+        locale: 'pt-BR' 
+    })
+    
+  } catch (e) {
+    console.error("Erro ao carregar MP SDK:", e)
+  }
   
-  try { mpInstance = new window.MercadoPago(publicKey, { locale: 'pt-BR' }) } catch (e) {}
   loading.value = false
 })
 
@@ -160,9 +161,8 @@ const handleExpiryChange = (e) => {
   }
 }
 
-// --- FUNÇÃO DE PAGAMENTO BLINDADA ---
+// --- PAGAMENTO ---
 async function criarPedido() {
-  // 1. Validações Básicas
   if (!profile.value?.address || !profile.value?.number || !profile.value?.cep) {
     Swal.fire({
       title: 'Endereço Incompleto', text: 'Precisamos do seu endereço completo.', icon: 'warning',
@@ -189,7 +189,7 @@ async function criarPedido() {
   try {
     let cardTokenId = null
 
-    // 2. Tokenização do Cartão (Única parte sensível no Front)
+    // GERAÇÃO DE TOKEN VIA SDK (Segurança)
     if (paymentMethod.value === 'credit_card') {
       if (!mpInstance) throw new Error("Sistema de pagamento indisponível.")
       
@@ -205,42 +205,34 @@ async function criarPedido() {
       cardTokenId = tokenResponse.id
     }
 
-    // 3. Preparar Itens para o Formato do Backend
-    // Traduz 'size' para 'tamanhoEscolhido'
     const itemsBackend = cart.itens.map(item => ({
        id: item.id,
        name: item.name,
-       // Envia preço apenas como referência (o ideal seria backend buscar no banco)
        price_sale: item.price_sale, 
        quantidade: item.quantidade || item.quantity,
        tamanhoEscolhido: item.size,
        personalizacao: item.customization || null
     }))
 
-    // 4. Payload SEGURO (Sem user_id, sem amount)
     const payload = {
       items: itemsBackend,
       customer_cpf: profile.value.cpf,
       shipping_cost: valorFrete.value,
       method: paymentMethod.value,
       
-      // Opcionais Cartão
       card_token: cardTokenId,
       installments: selectedInstallment.value?.installments,
       payment_method_id: paymentMethodId.value,
       issuer_id: issuerId.value
     }
 
-    // 5. Chamar Edge Function
-    // Supabase injeta automaticamente o Authorization Bearer Token aqui
-    const { data, error } = await supabase.functions.invoke('criar-pix', {
+    const { data, error } = await supabase.functions.invoke('processar-pagamento', { // Corrigido para nome da sua function
       body: payload
     })
 
     if (error) throw new Error(error.message)
     if (data.error) throw new Error(data.message || 'Erro desconhecido')
 
-    // 6. Sucesso
     cart.limparCarrinho()
     router.push(`/pagamento/${data.order_id}`)
 
