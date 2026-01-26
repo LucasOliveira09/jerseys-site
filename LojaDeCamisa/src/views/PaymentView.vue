@@ -1,251 +1,87 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { useCartStore } from '../stores/cart'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabase'
 import Swal from 'sweetalert2'
-import { loadMercadoPago } from '@mercadopago/sdk-js' // <--- IMPORTAÇÃO OFICIAL
 
+const route = useRoute()
 const router = useRouter()
-const cart = useCartStore()
-
 const loading = ref(true)
-const processing = ref(false)
-const user = ref(null)
-const profile = ref(null)
-const paymentMethod = ref('pix') 
+const order = ref(null)
+const timeRemaining = ref(15 * 60) // 15 min para PIX
+let timer = null
 
-// --- DADOS DO CARTÃO ---
-const cardForm = ref({
-  cardNumber: '',
-  cardholderName: '',
-  cardExpirationMonth: '',
-  cardExpirationYear: '',
-  securityCode: '',
-  identificationType: 'CPF',
-  identificationNumber: ''
-})
-const installmentsList = ref([]) 
-const selectedInstallment = ref(null)
-const issuerId = ref(null)
-const paymentMethodId = ref(null)
-const paymentMethodImg = ref(null)
+const formatMoney = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
-let mpInstance = null 
-
-// --- CÁLCULOS VISUAIS ---
-const subtotal = computed(() => cart.itens.reduce((acc, item) => acc + (item.price_sale * item.quantidade), 0))
-const valorFrete = computed(() => {
-  const qtd = cart.quantidade
-  if (qtd === 0) return 0
-  if (qtd >= 3) return 0        
-  if (qtd === 2) return 20.00   
-  return 25.00                  
-})
-const totalBase = computed(() => subtotal.value + valorFrete.value)
-
-const totalGeralVisual = computed(() => {
-  if (paymentMethod.value === 'pix') return totalBase.value * 0.98
-  if (paymentMethod.value === 'credit_card' && selectedInstallment.value) {
-    return selectedInstallment.value.total_amount
-  }
-  return totalBase.value 
-})
-
-const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
-
-const showAlert = (title, text, icon = 'info') => {
-  return Swal.fire({
-    title: title, text: text, icon: icon,
-    background: '#151515', color: '#fff',
-    confirmButtonColor: '#00ffc2', confirmButtonText: 'OK'
-  })
-}
-
-// --- SIMULADOR DE PARCELAS ---
-const calcularParcelasPersonalizadas = (valorBase) => {
-  const opcoes = []
-  for (let i = 1; i <= 6; i++) {
-    let taxa = 0
-    let textoJuros = 'sem juros'
-
-    if (i === 3) taxa = 0.0579 
-    if (i === 4) taxa = 0.0799 
-    if (i === 5) taxa = 0.0819 
-    if (i === 6) taxa = 0.0839 
-
-    if (taxa > 0) textoJuros = 'c/ juros'
-
-    const valorTotalComJuros = valorBase * (1 + taxa)
-    const valorParcela = valorTotalComJuros / i
-
-    opcoes.push({
-      installments: i,
-      installment_rate: taxa * 100,
-      total_amount: valorTotalComJuros,
-      installment_amount: valorParcela,
-      recommended_message: `${i}x de ${formatMoney(valorParcela)} ${textoJuros}`
-    })
-  }
-  return opcoes
-}
-
-// --- INICIALIZAÇÃO ---
 onMounted(async () => {
-  if (cart.quantidade === 0) { router.push('/carrinho'); return }
-  
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
-  if (!currentUser) { router.push('/login'); return }
-  user.value = currentUser
-  
-  const { data } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
-  profile.value = data || {}
-  
-  if (profile.value.cpf) cardForm.value.identificationNumber = profile.value.cpf
+  const orderId = route.params.id
+  if (!orderId) { router.push('/'); return }
 
-  // --- CARREGAMENTO OFICIAL DO SDK ---
-  try {
-    await loadMercadoPago()
-    
-    const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY
-    if (!publicKey) { 
-        console.error("ERRO: VITE_MP_PUBLIC_KEY não encontrada no .env")
-        return
-    }
-    
-    // Inicializa e coleta automaticamente o Device ID
-    mpInstance = new window.MercadoPago(publicKey, { 
-        locale: 'pt-BR' 
-    })
-    
-  } catch (e) {
-    console.error("Erro ao carregar MP SDK:", e)
-  }
-  
-  loading.value = false
-})
+  // Busca dados do pedido
+  const { data, error } = await supabase.from('orders').select('*').eq('id', orderId).single()
 
-// --- LÓGICA DO CARTÃO ---
-const handleCardNumberChange = async () => {
-  let num = cardForm.value.cardNumber.replace(/\D/g, '')
-  cardForm.value.cardNumber = num.replace(/(\d{4})/g, '$1 ').trim().slice(0, 19)
-
-  if (num.length >= 6 && mpInstance) { 
-    const bin = num.substring(0, 6)
-    try {
-      const paymentMethods = await mpInstance.getPaymentMethods({ bin })
-      if (paymentMethods.results.length > 0) {
-        const method = paymentMethods.results[0]
-        paymentMethodId.value = method.id
-        paymentMethodImg.value = method.secure_thumbnail || method.thumbnail 
-        issuerId.value = method.issuer.id
-
-        installmentsList.value = calcularParcelasPersonalizadas(totalBase.value)
-
-        if (!selectedInstallment.value) selectedInstallment.value = installmentsList.value[0]
-      }
-    } catch (e) { console.warn(e) }
-  } else if (num.length < 6) {
-    paymentMethodId.value = null; paymentMethodImg.value = null; installmentsList.value = []
-  }
-}
-
-const handleExpiryChange = (e) => {
-  let val = e.target.value.replace(/\D/g, '')
-  if (val.length > 2) {
-    cardForm.value.cardExpirationMonth = val.substring(0, 2)
-    cardForm.value.cardExpirationYear = '20' + val.substring(2, 4)
-    e.target.value = val.substring(0, 2) + '/' + val.substring(2, 4) 
-  } else {
-    cardForm.value.cardExpirationMonth = val
-  }
-}
-
-// --- PAGAMENTO ---
-async function criarPedido() {
-  if (!profile.value?.address || !profile.value?.number || !profile.value?.cep) {
-    Swal.fire({
-      title: 'Endereço Incompleto', text: 'Precisamos do seu endereço completo.', icon: 'warning',
-      background: '#151515', color: '#fff', confirmButtonText: 'Completar', confirmButtonColor: '#00ffc2'
-    }).then(() => router.push('/perfil'))
+  if (error || !data) {
+    Swal.fire('Erro', 'Pedido não encontrado.', 'error')
+    router.push('/')
     return
   }
 
-  if (!profile.value.cpf) {
-     const { value: cpfDigitado } = await Swal.fire({
-       title: 'CPF Obrigatório', text: 'Informe seu CPF para Nota Fiscal.', input: 'text',
-       inputPlaceholder: '000.000.000-00', background: '#151515', color: '#fff',
-       confirmButtonColor: '#00ffc2', showCancelButton: true,
-       inputValidator: (v) => !v && 'CPF é obrigatório!'
-     })
-     if(!cpfDigitado) return 
-     await supabase.from('profiles').update({ cpf: cpfDigitado }).eq('id', user.value.id)
-     profile.value.cpf = cpfDigitado
-     cardForm.value.identificationNumber = cpfDigitado
+  order.value = data
+  loading.value = false
+
+  // Se for PIX pendente, inicia timer
+  if (order.value.status === 'Pendente' && order.value.payment_method === 'pix') {
+    startTimer()
   }
+  
+  // Inicia escuta em tempo real
+  verificarPagamentoEmTempoReal()
+})
 
-  processing.value = true
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+  supabase.removeAllChannels()
+})
 
-  try {
-    let cardTokenId = null
+function startTimer() {
+  timer = setInterval(() => {
+    if (timeRemaining.value > 0) timeRemaining.value--
+    else clearInterval(timer)
+  }, 1000)
+}
 
-    // GERAÇÃO DE TOKEN VIA SDK (Segurança)
-    if (paymentMethod.value === 'credit_card') {
-      if (!mpInstance) throw new Error("Sistema de pagamento indisponível.")
-      
-      const tokenResponse = await mpInstance.createCardToken({
-        cardNumber: cardForm.value.cardNumber.replace(/\s/g, ''),
-        cardholderName: cardForm.value.cardholderName,
-        cardExpirationMonth: cardForm.value.cardExpirationMonth,
-        cardExpirationYear: cardForm.value.cardExpirationYear,
-        securityCode: cardForm.value.securityCode,
-        identificationType: 'CPF',
-        identificationNumber: cardForm.value.identificationNumber.replace(/\D/g, '')
-      })
-      cardTokenId = tokenResponse.id
-    }
+const formattedTime = () => {
+  const m = Math.floor(timeRemaining.value / 60)
+  const s = timeRemaining.value % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
 
-    const itemsBackend = cart.itens.map(item => ({
-       id: item.id,
-       name: item.name,
-       price_sale: item.price_sale, 
-       quantidade: item.quantidade || item.quantity,
-       tamanhoEscolhido: item.size,
-       personalizacao: item.customization || null
-    }))
+const copiarPix = () => {
+  if (!order.value?.pix_code) return
+  navigator.clipboard.writeText(order.value.pix_code)
+  Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Copiado!', showConfirmButton: false, timer: 1500, background: '#151515', color: '#fff' })
+}
 
-    const payload = {
-      items: itemsBackend,
-      customer_cpf: profile.value.cpf,
-      shipping_cost: valorFrete.value,
-      method: paymentMethod.value,
-      
-      card_token: cardTokenId,
-      installments: selectedInstallment.value?.installments,
-      payment_method_id: paymentMethodId.value,
-      issuer_id: issuerId.value
-    }
-
-    const { data, error } = await supabase.functions.invoke('processar-pagamento', { // Corrigido para nome da sua function
-      body: payload
-    })
-
-    if (error) throw new Error(error.message)
-    if (data.error) throw new Error(data.message || 'Erro desconhecido')
-
-    cart.limparCarrinho()
-    router.push(`/pagamento/${data.order_id}`)
-
-  } catch (err) {
-    console.error(err)
-    let msg = err.message
-    if (msg.includes('token')) msg = 'Verifique os dados do cartão.'
-    if (msg.includes('installments')) msg = 'Selecione o parcelamento.'
-    
-    showAlert('Erro no Pagamento', msg, 'error')
-  } finally {
-    processing.value = false
-  }
+function verificarPagamentoEmTempoReal() {
+  supabase
+    .channel('orders_updates')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${order.value.id}` },
+      (payload) => {
+        // Atualiza o objeto local com o novo status que veio do banco
+        order.value = payload.new
+        
+        if (payload.new.status === 'Pago') {
+          clearInterval(timer)
+          Swal.fire({
+            title: 'Aprovado! 🚀',
+            text: 'Pagamento confirmado com sucesso.',
+            icon: 'success',
+            background: '#151515', color: '#fff', confirmButtonColor: '#00ffc2'
+          })
+        }
+      }
+    )
+    .subscribe()
 }
 </script>
 
