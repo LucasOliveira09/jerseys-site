@@ -46,7 +46,7 @@ import { RouterLink } from 'vue-router'
           <h4 class="text-white font-bold uppercase tracking-widest mb-6 text-xs">Atendimento</h4>
           <ul class="space-y-3 mb-6">
             <li class="flex items-center gap-2">
-              <span class="text-atk-neon">✉️</span> contato@lgafut.com
+              <span class="text-atk-neon">✉️</span> lgasports.camisas@gmail.com
             </li>
             <li class="flex items-center gap-2">
               <span class="text-atk-neon">📱</span>
