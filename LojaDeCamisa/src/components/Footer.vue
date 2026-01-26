@@ -17,6 +17,7 @@ import { RouterLink } from 'vue-router'
           </p>
           <div class="flex gap-4 pt-2">
             <a href="#" class="w-8 h-8 rounded bg-white/5 flex items-center justify-center hover:bg-atk-neon hover:text-atk-dark transition">📸</a>
+            <a href="#" class="w-8 h-8 rounded bg-white/5 flex items-center justify-center hover:bg-atk-neon hover:text-atk-dark transition">🎵</a> 
             <a href="#" class="w-8 h-8 rounded bg-white/5 flex items-center justify-center hover:bg-atk-neon hover:text-atk-dark transition">🐦</a>
             <a href="#" class="w-8 h-8 rounded bg-white/5 flex items-center justify-center hover:bg-atk-neon hover:text-atk-dark transition">💬</a>
           </div>
@@ -42,44 +43,60 @@ import { RouterLink } from 'vue-router'
         </div>
 
         <div>
-  <h4 class="text-white font-bold uppercase tracking-widest mb-6 text-xs">Atendimento</h4>
-  <ul class="space-y-3 mb-6">
-    <li class="flex items-center gap-2">
-      <span class="text-atk-neon">✉️</span> contato@lgafut.com
-    </li>
-    <li class="flex items-center gap-2">
-  <span class="text-atk-neon">📱</span>
-  <a href="https://wa.me/5514982200278" target="_blank" class="hover:text-atk-neon transition">
-    (14) 98220-0278
-  </a>
-</li>
-    <li class="text-xs text-gray-400">Qualquer horário, estamos à disposição!</li>
-  </ul>
-  
-  <h4 class="text-white font-bold uppercase tracking-widest mb-3 text-xs">Pagamento</h4>
-  
-  <div class="flex flex-wrap gap-2">
-    <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
-      <img src="https://www.feebpr.org.br/images/media/53504254670e425338182.jpg" alt="Pix" class="w-full h-full object-contain">
-    </div>
-    
-    <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" class="w-full h-full object-contain">
-    </div>
+          <h4 class="text-white font-bold uppercase tracking-widest mb-6 text-xs">Atendimento</h4>
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-center gap-2">
+              <span class="text-atk-neon">✉️</span> contato@lgafut.com
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-atk-neon">📱</span>
+              <a href="https://wa.me/5514982200278" target="_blank" class="hover:text-atk-neon transition">
+                (14) 98220-0278
+              </a>
+            </li>
+            <li class="text-xs text-gray-400">Qualquer horário, estamos à disposição!</li>
+          </ul>
+          
+          <h4 class="text-white font-bold uppercase tracking-widest mb-3 text-xs">Pagamento</h4>
+          
+          <div class="flex flex-wrap gap-2">
+            <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
+              <img src="https://www.feebpr.org.br/images/media/53504254670e425338182.jpg" alt="Pix" class="w-full h-full object-contain">
+            </div>
+            <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" class="w-full h-full object-contain">
+            </div>
+            <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" class="w-full h-full object-contain">
+            </div>
+            <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg" alt="Amex" class="w-full h-full object-contain">
+            </div>
+            <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/Elo_logo.png" alt="Elo" class="w-full h-full object-contain">
+            </div>
+            <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/a/a6/Hipercard_logo.png" alt="Hipercard" class="w-full h-full object-contain">
+            </div>
+          </div>
 
-    <div class="bg-white p-1 rounded w-10 h-7 flex items-center justify-center overflow-hidden">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" class="w-full h-full object-contain">
-    </div>
-  </div>
+          <h4 class="text-white font-bold uppercase tracking-widest mb-3 text-xs mt-6">Segurança</h4>
+          <div class="flex items-center gap-2">
+            <div class="bg-white/5 p-2 rounded flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-atk-neon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+              </svg>
+              <span class="text-[10px] uppercase text-gray-400 font-bold">Google Seguro</span>
+            </div>
+            <div class="bg-white/5 p-2 rounded flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-atk-neon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+              </svg>
+              <span class="text-[10px] uppercase text-gray-400 font-bold">SSL Certificado</span>
+            </div>
+          </div>
 
-  <div class="mt-4 flex items-center gap-2 opacity-70">
-    <span class="text-[10px] uppercase text-gray-400 font-bold">Ambiente Seguro</span>
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-atk-neon">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-    </svg>
-  </div>
-
-</div>
+        </div>
 
       </div>
 
