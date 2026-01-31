@@ -15,6 +15,7 @@
     "@mercadopago/sdk-js": "^0.0.3",
     "@supabase/supabase-js": "^2.90.1",
     "@vueuse/head": "^2.0.0",
+    "canvas-confetti": "^1.9.4",
     "pinia": "^3.0.4",
     "qrcode": "^1.5.4",
     "sweetalert2": "^11.26.17",

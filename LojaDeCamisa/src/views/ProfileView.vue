@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../supabase'
 import { useRouter } from 'vue-router'
-import Swal from 'sweetalert2' // Importando SweetAlert2
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const user = ref(null)
@@ -10,7 +10,6 @@ const orders = ref([])
 const loading = ref(true)
 const saving = ref(false)
 
-// Começa na aba 'dados'
 const activeTab = ref('dados')
 
 // Dados do Formulário
@@ -43,16 +42,11 @@ onMounted(async () => {
   await carregarDados()
 })
 
-// --- HELPER PARA ALERTAS (PADRÃO DARK) ---
 const showAlert = (title, text, icon = 'success') => {
   return Swal.fire({
-    title: title,
-    text: text,
-    icon: icon,
-    background: '#151515',
-    color: '#fff',
-    confirmButtonColor: '#00ffc2',
-    confirmButtonText: 'OK'
+    title: title, text: text, icon: icon,
+    background: '#151515', color: '#fff',
+    confirmButtonColor: '#00ffc2', confirmButtonText: 'OK'
   })
 }
 
@@ -63,31 +57,23 @@ async function carregarDados() {
   if (!currentUser) { router.push('/login'); return }
   user.value = currentUser
 
-  // 1. Carrega Perfil do Banco
+  // 1. Carrega Perfil
   const { data: profileData } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
-  
-  // 🔹 NOVA LÓGICA: Pega nome do Google/Metadados
-  // O Google geralmente manda como 'full_name', 'name' ou 'picture' dentro de user_metadata
   const nomeGoogle = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || ''
 
   if (profileData) {
     formPerfil.value = { ...profileData, email: currentUser.email }
-    
-    // Se o nome estiver vazio no banco, preenche com o do Google visualmente
-    if (!formPerfil.value.full_name && nomeGoogle) {
-      formPerfil.value.full_name = nomeGoogle.toUpperCase()
-    }
+    if (!formPerfil.value.full_name && nomeGoogle) formPerfil.value.full_name = nomeGoogle.toUpperCase()
   } else {
-    // Caso raro onde não existe perfil (fallback)
     formPerfil.value.email = currentUser.email
     formPerfil.value.full_name = nomeGoogle.toUpperCase()
   }
 
-  // 2. Carrega Pedidos
+  // 2. Carrega Pedidos (INCLUINDO pix_code QUE É O LINK DA INFINITEPAY)
   const { data: ordersData, error } = await supabase
     .from('orders')
     .select(`
-      id, created_at, total, status, shipping_cost,
+      id, created_at, total, status, shipping_cost, pix_code, 
       order_items (
         id, quantity, price, size, customization,
         produtos ( name, image_cover ) 
@@ -96,20 +82,59 @@ async function carregarDados() {
     .eq('user_id', currentUser.id)
     .order('created_at', { ascending: false })
   
-  if (error) {
-    console.error("Erro ao buscar pedidos:", error)
-  }
-  
+  if (error) console.error("Erro ao buscar pedidos:", error)
   orders.value = ordersData || []
   loading.value = false
 }
 
-// --- AÇÃO DE PAGAR ---
-function irParaPagamento(orderId) {
-  router.push(`/pagamento/${orderId}`)
+// --- LÓGICA DE RETOMADA DE PAGAMENTO ---
+// --- LÓGICA DE RETOMADA DE PAGAMENTO (ATUALIZADA) ---
+async function irParaPagamento(order) {
+  // Mostra loading para o usuário saber que estamos gerando um novo link
+  Swal.fire({
+    title: 'Acessando pagamento...',
+    text: 'Gerando um link seguro e atualizado na InfinitePay.',
+    didOpen: () => { Swal.showLoading() },
+    background: '#151515', color: '#fff',
+    allowOutsideClick: false
+  })
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+
+    // Chama o backend pedindo para RENOVAR o link (retry_order_id)
+    const { data, error } = await supabase.functions.invoke('StripeRefresh', {
+      body: {
+        retry_order_id: order.id, // Isso avisa o backend para pegar os dados do banco e gerar link novo
+        items: [], 
+        shipping_cost: 0
+      },
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    })
+
+    if (error || (data && data.error)) {
+        throw new Error(data?.message || error?.message || "Erro ao conectar com InfinitePay")
+    }
+
+    // Se gerou com sucesso, redireciona
+    if (data.payment_url) {
+        window.location.href = data.payment_url
+    } else {
+        throw new Error("Link não recebido")
+    }
+
+  } catch (err) {
+    console.error(err)
+    Swal.fire({
+      title: 'Erro',
+      text: 'Não foi possível atualizar o link de pagamento. Tente novamente.',
+      icon: 'error',
+      background: '#151515', color: '#fff'
+    })
+  }
 }
 
-// --- LÓGICA DE CPF E MÁSCARAS ---
+// ... (Funções de validação CPF, salvar perfil, CEP, máscaras mantidas iguais) ...
 function validarCPF(cpf) {
   cpf = cpf.replace(/[^\d]+/g, '')
   if (cpf === '') return false
@@ -128,17 +153,15 @@ function validarCPF(cpf) {
 }
 
 async function salvarPerfil() {
-  // Validação CPF com SweetAlert
   if (formPerfil.value.cpf && !validarCPF(formPerfil.value.cpf)) {
     showAlert('CPF Inválido', 'Verifique os números digitados.', 'warning')
     return
   }
-
   saving.value = true
   try {
     const updates = {
       id: user.value.id,
-      full_name: formPerfil.value.full_name, // Salva o nome (incluindo o do Google se foi preenchido)
+      full_name: formPerfil.value.full_name,
       cpf: formPerfil.value.cpf ? formPerfil.value.cpf.replace(/\D/g, '') : null,
       phone: formPerfil.value.phone,
       cep: formPerfil.value.cep,
@@ -152,10 +175,7 @@ async function salvarPerfil() {
     }
     const { error } = await supabase.from('profiles').upsert(updates)
     if (error) throw error
-    
-    // Sucesso com SweetAlert
     showAlert('Sucesso!', 'Seus dados foram atualizados.', 'success')
-
   } catch (error) {
     showAlert('Erro', error.message, 'error')
   } finally {
@@ -197,21 +217,12 @@ function mascaraTelefone(e) {
   formPerfil.value.phone = v
 }
 
-// Logout com Confirmação
 async function handleLogout() {
   const result = await Swal.fire({
-    title: 'Sair da conta?',
-    text: "Você precisará fazer login novamente.",
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
-    confirmButtonText: 'Sair',
-    cancelButtonText: 'Cancelar',
-    background: '#151515',
-    color: '#fff'
+    title: 'Sair da conta?', text: "Você precisará fazer login novamente.", icon: 'question',
+    showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6',
+    confirmButtonText: 'Sair', cancelButtonText: 'Cancelar', background: '#151515', color: '#fff'
   })
-
   if (result.isConfirmed) {
     await supabase.auth.signOut()
     router.push('/login')
@@ -321,7 +332,7 @@ const statusClass = (status) => {
               </div>
               
               <div class="flex gap-2">
-                 <button v-if="order.status === 'Pendente'" @click="irParaPagamento(order.id)" class="text-xs bg-green-500 text-white hover:bg-green-400 px-4 py-2 rounded font-bold uppercase transition flex items-center gap-2 animate-pulse">
+                 <button v-if="order.status === 'Pendente'" @click="irParaPagamento(order)" class="text-xs bg-green-600 text-white hover:bg-green-500 px-4 py-2 rounded font-bold uppercase transition flex items-center gap-2 animate-pulse shadow-lg shadow-green-900/20">
                     Pagar Agora 💳
                  </button>
                  
@@ -353,9 +364,7 @@ const statusClass = (status) => {
         <div class="p-4 overflow-y-auto custom-scrollbar space-y-3 flex-grow">
           <div v-for="item in selectedOrder.order_items" :key="item.id" class="flex gap-4 bg-black/20 p-3 rounded border border-white/5 items-center">
             <div class="w-16 h-16 bg-white/5 rounded flex items-center justify-center flex-shrink-0 overflow-hidden border border-white/10">
-               <img v-if="item.produtos?.image_cover" 
-                    :src="item.produtos.image_cover" 
-                    class="w-full h-full object-contain p-1">
+               <img v-if="item.produtos?.image_cover" :src="item.produtos.image_cover" class="w-full h-full object-contain p-1">
                <span v-else class="text-xs text-gray-500">Sem foto</span>
             </div>
             <div class="flex-grow">
@@ -385,9 +394,9 @@ const statusClass = (status) => {
             </div>
             
             <button v-if="selectedOrder.status === 'Pendente'" 
-                    @click="irParaPagamento(selectedOrder.id)" 
-                    class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded uppercase mt-4 transition">
-               Realizar Pagamento Agora
+                    @click="irParaPagamento(selectedOrder)" 
+                    class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded uppercase mt-4 transition shadow-lg shadow-green-900/30">
+               Realizar Pagamento Agora (InfinitePay)
             </button>
         </div>
       </div>

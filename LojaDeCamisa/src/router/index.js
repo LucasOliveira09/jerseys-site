@@ -12,6 +12,7 @@ import CheckoutView from '../views/CheckoutView.vue'
 import PaymentView from '../views/PaymentView.vue'
 import ForgotPasswordView from '../views/ForgotPasswordView.vue'
 import UpdatePasswordView from '../views/UpdatePasswordView.vue'
+import SucessView from '@/views/SucessView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -29,6 +30,15 @@ const router = createRouter({
       path: '/pagamento/:id',
       name: 'pagamento',
       component: PaymentView,
+      meta: { 
+        requiresAuth: true,
+        title: 'Pagamento | LGA Sports' 
+      }
+    },
+    {
+      path: '/pagamento/sucesso',
+      name: 'pagamentos',
+      component: SucessView,
       meta: { 
         requiresAuth: true,
         title: 'Pagamento | LGA Sports' 
