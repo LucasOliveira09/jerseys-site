@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabase'
 import Swal from 'sweetalert2'
@@ -13,11 +13,31 @@ let timer = null
 
 const formatMoney = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
-onMounted(async () => {
-  const orderId = route.params.id
-  if (!orderId) { router.push('/'); return }
+// --- LÓGICA INTELIGENTE PARA SABER O TIPO DE PAGAMENTO ---
+const isPix = computed(() => {
+  if (!order.value) return false
+  // É Pix se o método for 'pix' OU se tiver um código Pix (QR Code) salvo no banco
+  return order.value.payment_method === 'pix' || (order.value.pix_code && !order.value.pix_code.startsWith('http'))
+})
 
-  // Busca dados do pedido
+const isCreditCard = computed(() => {
+  if (!order.value) return false
+  // É cartão se o método for 'credit_card' ou 'infinitepay', OU se o pix_code for um Link (http)
+  return order.value.payment_method === 'credit_card' || 
+         order.value.payment_method === 'infinitepay' || 
+         (order.value.pix_code && order.value.pix_code.startsWith('http'))
+})
+
+onMounted(async () => {
+  let rawId = route.params.id || route.query.order_nsu || route.query.order_id
+  
+  if (!rawId) { 
+      router.push('/')
+      return 
+  }
+
+  const orderId = rawId.includes('_') ? rawId.split('_')[0] : rawId
+
   const { data, error } = await supabase.from('orders').select('*').eq('id', orderId).single()
 
   if (error || !data) {
@@ -30,11 +50,10 @@ onMounted(async () => {
   loading.value = false
 
   // Se for PIX pendente, inicia timer
-  if (order.value.status === 'Pendente' && order.value.payment_method === 'pix') {
+  if (order.value.status === 'Pendente' && isPix.value) {
     startTimer()
   }
   
-  // Inicia escuta em tempo real
   verificarPagamentoEmTempoReal()
 })
 
@@ -63,13 +82,13 @@ const copiarPix = () => {
 }
 
 function verificarPagamentoEmTempoReal() {
+  if (!order.value) return
+
   supabase
-    .channel('orders_updates')
+    .channel(`order_${order.value.id}`)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${order.value.id}` },
       (payload) => {
-        // Atualiza o objeto local com o novo status que veio do banco
         order.value = payload.new
-        
         if (payload.new.status === 'Pago') {
           clearInterval(timer)
           Swal.fire({
@@ -95,9 +114,10 @@ function verificarPagamentoEmTempoReal() {
       <div class="text-center mb-8 border-b border-white/5 pb-4">
         <p class="text-gray-500 text-xs uppercase tracking-widest mb-1">Pedido #{{ String(order.id).slice(0,8) }}</p>
         <h1 class="text-2xl font-extrabold uppercase text-white">
-          {{ order.status === 'Pago' ? 'Pagamento Aprovado' : 
-             order.status === 'Falha' ? 'Pagamento Recusado' : 
-             order.payment_method === 'pix' ? 'Pague com PIX' : 'Processando...' }}
+          <span v-if="order.status === 'Pago'">Pagamento Aprovado</span>
+          <span v-else-if="order.status === 'Falha'">Pagamento Recusado</span>
+          <span v-else-if="isPix">Pague com PIX</span>
+          <span v-else>Confirmando Pagamento...</span>
         </h1>
       </div>
 
@@ -112,7 +132,7 @@ function verificarPagamentoEmTempoReal() {
         </button>
       </div>
 
-      <div v-else-if="order.status === 'Pendente' && order.payment_method === 'pix'" class="animate-fade-in">
+      <div v-else-if="order.status === 'Pendente' && isPix" class="animate-fade-in">
         <div class="text-center mb-6">
           <p class="text-gray-400 text-xs uppercase">Total a pagar</p>
           <p class="text-4xl font-extrabold text-atk-neon mt-1">{{ formatMoney(order.total) }}</p>
@@ -138,16 +158,17 @@ function verificarPagamentoEmTempoReal() {
         </div>
       </div>
 
-      <div v-else-if="order.status === 'Pendente' && order.payment_method === 'credit_card'" class="text-center py-6 animate-fade-in">
+      <div v-else-if="order.status === 'Pendente'" class="text-center py-6 animate-fade-in">
          <div class="w-20 h-20 border-4 border-atk-neon border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-         <h3 class="text-lg font-bold text-white mb-2">Analisando Pagamento...</h3>
+         <h3 class="text-lg font-bold text-white mb-2">Processando na InfinitePay...</h3>
          <p class="text-gray-400 text-sm leading-relaxed mb-6">
-           Estamos processando a transação com seu cartão. <br>
-           Isso geralmente leva alguns segundos, mas pode demorar um pouco mais dependendo do banco.
+           Se você já realizou o pagamento no link seguro, aguarde um momento. <br>
+           A confirmação é automática.
          </p>
-         <div class="bg-blue-500/10 border border-blue-500/20 p-4 rounded text-xs text-blue-400">
-           ℹ️ Não feche esta página. Ela atualizará automaticamente assim que o banco responder.
-         </div>
+         
+         <a v-if="order.pix_code && order.pix_code.startsWith('http')" :href="order.pix_code" class="block w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded uppercase font-bold text-xs mt-4">
+            Abrir Pagamento Novamente
+         </a>
       </div>
 
       <div v-else-if="order.status === 'Falha'" class="text-center py-6 animate-fade-in">
@@ -156,11 +177,10 @@ function verificarPagamentoEmTempoReal() {
          </div>
          <h3 class="text-xl font-bold text-red-500 mb-2">Pagamento Recusado</h3>
          <p class="text-white text-sm mb-2 font-bold">{{ order.payment_status || 'Transação não autorizada' }}</p>
-         <p class="text-gray-400 text-xs mb-8">Verifique os dados do cartão, o limite disponível ou tente outro meio de pagamento.</p>
+         <p class="text-gray-400 text-xs mb-8">Verifique os dados ou tente outro meio.</p>
          
          <div class="flex gap-3 justify-center">
             <button @click="router.push('/carrinho')" class="bg-white/10 text-white px-6 py-3 rounded-lg text-xs font-bold uppercase hover:bg-white/20">Voltar</button>
-            <button @click="router.push('/carrinho')" class="bg-red-600 text-white px-6 py-3 rounded-lg text-xs font-bold uppercase hover:bg-red-500">Tentar Novamente</button>
          </div>
       </div>
 

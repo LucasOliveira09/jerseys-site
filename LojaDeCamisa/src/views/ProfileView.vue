@@ -14,17 +14,8 @@ const activeTab = ref('dados')
 
 // Dados do Formulário
 const formPerfil = ref({
-  full_name: '',
-  email: '',
-  cpf: '',
-  phone: '',
-  cep: '',
-  address: '',
-  number: '',
-  complement: '',
-  district: '',
-  city: '',
-  state: ''
+  full_name: '', email: '', cpf: '', phone: '', cep: '',
+  address: '', number: '', complement: '', district: '', city: '', state: ''
 })
 
 const showModal = ref(false)
@@ -69,11 +60,11 @@ async function carregarDados() {
     formPerfil.value.full_name = nomeGoogle.toUpperCase()
   }
 
-  // 2. Carrega Pedidos (INCLUINDO pix_code QUE É O LINK DA INFINITEPAY)
+  // 2. Carrega Pedidos (Trazendo o método de pagamento também)
   const { data: ordersData, error } = await supabase
     .from('orders')
     .select(`
-      id, created_at, total, status, shipping_cost, pix_code, 
+      id, created_at, total, status, shipping_cost, pix_code, payment_method,
       order_items (
         id, quantity, price, size, customization,
         produtos ( name, image_cover ) 
@@ -87,13 +78,19 @@ async function carregarDados() {
   loading.value = false
 }
 
-// --- LÓGICA DE RETOMADA DE PAGAMENTO ---
-// --- LÓGICA DE RETOMADA DE PAGAMENTO (ATUALIZADA) ---
+// --- NOVA LÓGICA DE RETOMADA DE PAGAMENTO (HÍBRIDA) ---
 async function irParaPagamento(order) {
-  // Mostra loading para o usuário saber que estamos gerando um novo link
+  
+  // CASO 1: Se for PIX, apenas mandamos para a tela de visualização
+  if (order.payment_method === 'pix') {
+      router.push(`/pagamento/sucesso?order_nsu=${order.id}`)
+      return
+  }
+
+  // CASO 2: Se for Cartão (InfinitePay), geramos novo link
   Swal.fire({
-    title: 'Acessando pagamento...',
-    text: 'Gerando um link seguro e atualizado na InfinitePay.',
+    title: 'Acessando InfinitePay...',
+    text: 'Gerando um link seguro e atualizado.',
     didOpen: () => { Swal.showLoading() },
     background: '#151515', color: '#fff',
     allowOutsideClick: false
@@ -102,10 +99,10 @@ async function irParaPagamento(order) {
   try {
     const { data: { session } } = await supabase.auth.getSession()
 
-    // Chama o backend pedindo para RENOVAR o link (retry_order_id)
+    // CORREÇÃO AQUI: Mudamos de 'StripeRefresh' para 'processar-pagamento'
     const { data, error } = await supabase.functions.invoke('StripeRefresh', {
       body: {
-        retry_order_id: order.id, // Isso avisa o backend para pegar os dados do banco e gerar link novo
+        retry_order_id: order.id, // Backend entende que deve buscar dados do banco
         items: [], 
         shipping_cost: 0
       },
@@ -127,14 +124,14 @@ async function irParaPagamento(order) {
     console.error(err)
     Swal.fire({
       title: 'Erro',
-      text: 'Não foi possível atualizar o link de pagamento. Tente novamente.',
+      text: 'Não foi possível atualizar o link. Tente fazer um novo pedido.',
       icon: 'error',
       background: '#151515', color: '#fff'
     })
   }
 }
 
-// ... (Funções de validação CPF, salvar perfil, CEP, máscaras mantidas iguais) ...
+// ... (Restante das funções auxiliares: validação, máscaras, etc. mantidas iguais) ...
 function validarCPF(cpf) {
   cpf = cpf.replace(/[^\d]+/g, '')
   if (cpf === '') return false
@@ -333,7 +330,7 @@ const statusClass = (status) => {
               
               <div class="flex gap-2">
                  <button v-if="order.status === 'Pendente'" @click="irParaPagamento(order)" class="text-xs bg-green-600 text-white hover:bg-green-500 px-4 py-2 rounded font-bold uppercase transition flex items-center gap-2 animate-pulse shadow-lg shadow-green-900/20">
-                    Pagar Agora 💳
+                    {{ order.payment_method === 'pix' ? 'Ver Pix 💠' : 'Pagar Agora 💳' }}
                  </button>
                  
                  <button @click="abrirDetalhes(order)" class="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded font-bold uppercase transition">
@@ -396,7 +393,7 @@ const statusClass = (status) => {
             <button v-if="selectedOrder.status === 'Pendente'" 
                     @click="irParaPagamento(selectedOrder)" 
                     class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded uppercase mt-4 transition shadow-lg shadow-green-900/30">
-               Realizar Pagamento Agora (InfinitePay)
+               {{ selectedOrder.payment_method === 'pix' ? 'Visualizar Código Pix' : 'Realizar Pagamento (InfinitePay)' }}
             </button>
         </div>
       </div>
